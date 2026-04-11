@@ -387,6 +387,14 @@
       return icons[type] || '💼';
     }
 
+    // Toggle menu function
+    function toggleMenu(sectionId) {
+      const content = document.getElementById(sectionId + '-content');
+      if (content) {
+        content.classList.toggle('expanded');
+      }
+    }
+
     // Render functions
     async function renderApp() {
       const app = document.getElementById('app');
