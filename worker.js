@@ -330,5 +330,15 @@ function defaultAppData() {
       { id: 5, service: 'Netflix', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
       { id: 6, service: 'Disney+', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
     ],
+    checklist: [
+      { id: 1, text: 'Review emergency contacts', completed: false },
+      { id: 2, text: 'Update will and estate documents', completed: true },
+      { id: 3, text: 'Check insurance policies expiration', completed: false },
+      { id: 4, text: 'Organize digital asset list', completed: false },
+      { id: 5, text: 'Taxes - Federal & Maryland', completed: false },
+      { id: 6, text: 'Update property management contacts', completed: false },
+      { id: 7, text: 'Review rental property insurance', completed: false },
+      { id: 8, text: 'Check LLC compliance requirements', completed: false }
+    ],
   };
 }
