@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" style="background:#0f172a">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Just In Case — Reset Password</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-2: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --success: #10b981;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--surface-2);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2rem 1.75rem;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .card-header {
+      text-align: center;
+      margin-bottom: 1.75rem;
+    }
+
+    .card-header .icon { font-size: 2rem; line-height: 1; margin-bottom: 0.6rem; }
+    .card-header h1 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+    .card-header p { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--text-muted); line-height: 1.45; }
+
+    .form-group { margin-bottom: 1rem; }
+
+    .form-group label {
+      display: block;
+      font-size: 0.73rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .form-control {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--surface-2);
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      color: var(--text);
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+
+    .form-control:focus { outline: none; border-color: var(--primary); }
+
+    .btn {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 0.25rem;
+    }
+
+    .btn:hover { opacity: 0.9; }
+    .btn:active { opacity: 0.8; }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .msg-box {
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .msg-box.error   { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.4); color: var(--danger); }
+    .msg-box.success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.4); color: var(--success); }
+    .msg-box.show    { display: block; }
+
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 1.25rem;
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    .back-link:hover { color: var(--primary); }
+
+    .hint {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+    }
+
+    /* Hidden by default; JS shows one view */
+    #request-view, #confirm-view, #done-view { display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+
+    <!-- View 1: Request a reset link -->
+    <div id="request-view">
+      <div class="card-header">
+        <div class="icon">🔑</div>
+        <h1>Reset Password</h1>
+        <p>Enter your email and we'll send you a link to set a new password.</p>
+      </div>
+      <div class="msg-box error" id="req-error"></div>
+      <div class="msg-box success" id="req-success"></div>
+      <form id="request-form" novalidate>
+        <div class="form-group">
+          <label for="req-email">Email</label>
+          <input type="email" class="form-control" id="req-email"
+            placeholder="your@email.com" autocomplete="email" required>
+        </div>
+        <button type="submit" class="btn" id="req-btn">Send Reset Link</button>
+      </form>
+      <a class="back-link" href="login.html">← Back to Sign In</a>
+    </div>
+
+    <!-- View 2: Set a new password (arrived via reset link) -->
+    <div id="confirm-view">
+      <div class="card-header">
+        <div class="icon">🔐</div>
+        <h1>Set New Password</h1>
+        <p>Choose a strong password for your account.</p>
+      </div>
+      <div class="msg-box error" id="conf-error"></div>
+      <form id="confirm-form" novalidate>
+        <div class="form-group">
+          <label for="new-password">New Password</label>
+          <input type="password" class="form-control" id="new-password"
+            placeholder="At least 8 characters" autocomplete="new-password" required>
+          <div class="hint">Must be at least 8 characters</div>
+        </div>
+        <div class="form-group">
+          <label for="confirm-password">Confirm Password</label>
+          <input type="password" class="form-control" id="confirm-password"
+            placeholder="Repeat your password" autocomplete="new-password" required>
+        </div>
+        <button type="submit" class="btn" id="conf-btn">Set Password</button>
+      </form>
+    </div>
+
+    <!-- View 3: Success after setting password -->
+    <div id="done-view">
+      <div class="card-header" style="margin-bottom:1rem">
+        <div class="icon">✅</div>
+        <h1>Password Updated</h1>
+        <p>Your password has been set. You can now sign in.</p>
+      </div>
+      <a href="login.html" class="btn" style="display:block;text-align:center;text-decoration:none;padding:0.75rem">
+        Go to Sign In
+      </a>
+    </div>
+
+  </div>
+
+  <script>
+    const params     = new URLSearchParams(window.location.search);
+    const resetToken = params.get('token');
+
+    // Show the right view on load
+    if (resetToken) {
+      document.getElementById('confirm-view').style.display = 'block';
+    } else {
+      document.getElementById('request-view').style.display = 'block';
+    }
+
+    // ── Request form ──────────────────────────────────────────
+    document.getElementById('request-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const btn     = document.getElementById('req-btn');
+      const errBox  = document.getElementById('req-error');
+      const okBox   = document.getElementById('req-success');
+      const email   = document.getElementById('req-email').value.trim();
+
+      errBox.classList.remove('show');
+      okBox.classList.remove('show');
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+
+      try {
+        const res  = await fetch('/api/auth/reset-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          okBox.textContent = data.message || 'Check your email for a reset link.';
+          okBox.classList.add('show');
+          document.getElementById('request-form').style.display = 'none';
+        } else {
+          errBox.textContent = data.error || 'Something went wrong. Please try again.';
+          errBox.classList.add('show');
+          btn.disabled = false;
+          btn.textContent = 'Send Reset Link';
+        }
+      } catch (err) {
+        errBox.textContent = 'Network error. Please check your connection and try again.';
+        errBox.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Send Reset Link';
+      }
+    });
+
+    // ── Confirm form ──────────────────────────────────────────
+    document.getElementById('confirm-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const btn      = document.getElementById('conf-btn');
+      const errBox   = document.getElementById('conf-error');
+      const password = document.getElementById('new-password').value;
+      const confirm  = document.getElementById('confirm-password').value;
+
+      errBox.classList.remove('show');
+
+      if (password.length < 8) {
+        errBox.textContent = 'Password must be at least 8 characters.';
+        errBox.classList.add('show');
+        return;
+      }
+
+      if (password !== confirm) {
+        errBox.textContent = 'Passwords do not match.';
+        errBox.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      try {
+        const res  = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: resetToken, password }),
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          document.getElementById('confirm-view').style.display = 'none';
+          document.getElementById('done-view').style.display   = 'block';
+        } else {
+          errBox.textContent = data.error || 'Could not set password. The link may have expired.';
+          errBox.classList.add('show');
+          btn.disabled = false;
+          btn.textContent = 'Set Password';
+        }
+      } catch (err) {
+        errBox.textContent = 'Network error. Please check your connection and try again.';
+        errBox.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Set Password';
+      }
+    });
+  </script>
+</body>
+</html>

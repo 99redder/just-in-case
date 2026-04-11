@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="background:#0f172a">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -252,7 +252,7 @@
     }
   </style>
 </head>
-<body>
+<body style="display:none">
   <header class="app-header">
     <div class="app-title">
       <span>🛡️</span>
@@ -261,6 +261,7 @@
     <div class="header-actions">
       <button class="btn btn-outline" id="view-only-btn">View Mode</button>
       <button class="btn btn-primary" id="save-btn">Save Changes</button>
+      <button class="btn btn-outline" id="logout-btn">Sign Out</button>
     </div>
   </header>
 
@@ -309,10 +310,14 @@
 
     // Storage functions
     async function saveData() {
+      const token = localStorage.getItem('jic_session');
       try {
         const response = await fetch('/api/data', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+          },
           body: JSON.stringify(appData)
         });
         
@@ -326,8 +331,11 @@
     }
 
     async function loadData() {
+      const token = localStorage.getItem('jic_session');
       try {
-        const response = await fetch('/api/data');
+        const response = await fetch('/api/data', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
         if (!response.ok) throw new Error('Failed to fetch data');
         const data = await response.json();
         return data;
@@ -735,8 +743,36 @@
 
     document.getElementById('save-btn').addEventListener('click', saveData);
 
-    // Initialize
-    renderApp();
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      const token = localStorage.getItem('jic_session');
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+      } catch (e) { /* ignore */ }
+      localStorage.removeItem('jic_session');
+      window.location.replace('login.html');
+    });
+
+    // Auth guard — show page only after session is confirmed
+    (async function init() {
+      const token = localStorage.getItem('jic_session');
+      if (!token) { window.location.replace('login.html'); return; }
+      try {
+        const r = await fetch('/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!r.ok) {
+          localStorage.removeItem('jic_session');
+          window.location.replace('login.html');
+          return;
+        }
+      } catch (e) { /* network error — allow through */ }
+      document.body.style.display = '';
+      renderApp();
+    })();
   </script>
 </body>
 </html>
