@@ -209,14 +209,9 @@
       cursor: pointer;
     }
 
-    .checklist-item.completed .checklist-text {
+    .checklist-item.completed .menu-item-title {
       text-decoration: line-through;
       color: var(--text-muted);
-    }
-
-    .checklist-text {
-      font-size: 0.9rem;
-      line-height: 1.4;
     }
 
     /* Passwords section specific */
@@ -465,16 +460,7 @@
         { id: 5, service: 'Netflix', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
         { id: 6, service: 'Disney+', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' }
       ],
-      checklist: [
-        { id: 1, text: 'Review emergency contacts', completed: false },
-        { id: 2, text: 'Update will and estate documents', completed: true },
-        { id: 3, text: 'Check insurance policies expiration', completed: false },
-        { id: 4, text: 'Organize digital asset list', completed: false },
-        { id: 5, text: 'Taxes - Federal & Maryland', completed: false },
-        { id: 6, text: 'Update property management contacts', completed: false },
-        { id: 7, text: 'Review rental property insurance', completed: false },
-        { id: 8, text: 'Check LLC compliance requirements', completed: false }
-      ]
+      checklist: []
     };
 
     // Load data from Cloudflare Worker or use defaults
@@ -655,7 +641,7 @@
         </div>
       `;
 
-      // Checklist Section (moved to bottom)
+      // Checklist Section
       html += `
         <div class="menu-card">
           <div class="menu-header" onclick="toggleMenu('checklist')">
@@ -663,10 +649,15 @@
             <span class="chevron">▼</span>
           </div>
           <div class="menu-content" id="checklist-content">
-            ${appData.checklist.length > 0 ? appData.checklist.map(item => `
-              <div class="menu-item checklist-item ${item.completed ? 'completed' : ''}">
-                <input type="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleChecklistItem(${item.id})">
-                <span class="checklist-text">${escapeHtml(item.text)}</span>
+            ${appData.checklist && appData.checklist.length > 0 ? appData.checklist.map(item => `
+              <div class="menu-item checklist-item ${item.completed ? 'completed' : ''}" data-id="${item.id}">
+                <input type="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleChecklistItem(${item.id})"
+                  style="width:1.1rem;height:1.1rem;accent-color:var(--success);cursor:pointer;flex-shrink:0;margin-right:0.5rem">
+                <div class="menu-item-info" style="flex:1;min-width:0">
+                  <div class="menu-item-title">${escapeHtml(item.title || '')}</div>
+                  ${item.notes ? `<div class="menu-item-subtitle">${escapeHtml(item.notes)}</div>` : ''}
+                </div>
+                ${item.details ? `<div class="menu-item-action"><button class="btn btn-outline" onclick="showDetails('checklist',${item.id})">Details</button></div>` : ''}
               </div>
             `).join('') : '<div class="empty-state">No checklist items added yet.</div>'}
           </div>
@@ -676,13 +667,24 @@
       app.innerHTML = html;
     }
 
-    // Checklist toggle
-    function toggleChecklistItem(id) {
-      const item = appData.checklist.find(i => i.id === id);
-      if (item) {
-        item.completed = !item.completed;
-        renderApp();
+    // Checklist toggle — flips completed state and persists to server
+    async function toggleChecklistItem(id) {
+      const item = appData.checklist?.find(i => i.id === id);
+      if (!item) return;
+      item.completed = !item.completed;
+      // Update visual state without full re-render so expanded sections stay open
+      const row = document.querySelector(`.checklist-item[data-id="${id}"]`);
+      if (row) {
+        row.classList.toggle('completed', item.completed);
       }
+      const token = localStorage.getItem('jic_session');
+      try {
+        await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+          body: JSON.stringify(appData),
+        });
+      } catch (e) { /* ignore */ }
     }
 
     // Password reveal — reads actual value from data-pw attribute

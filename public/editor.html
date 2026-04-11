@@ -314,7 +314,7 @@
   </div>
 
   <script>
-    let appData = { firststeps: [], insurance: [], money: [], passwords: [] };
+    let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
 
     // ── Data I/O ──────────────────────────────────────────────
 
@@ -421,7 +421,20 @@
           </div>
         </div>`, 'No passwords yet.');
 
-      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + passwordsHtml;
+      const checklistHtml = renderSection('Checklist', '📋', 'checklist', item => `
+        <div class="data-item">
+          <div class="data-item-title" style="${item.completed ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">
+            ${item.completed ? '✅' : '⬜'} ${h(item.title)}
+          </div>
+          ${item.notes ? `<div class="data-item-meta">${h(item.notes)}</div>` : ''}
+          ${item.details ? `<div class="data-item-detail">${h(item.details)}</div>` : ''}
+          <div class="item-actions">
+            <button class="btn btn-outline" onclick="openModal('checklist',${item.id})">Edit</button>
+            <button class="btn btn-danger"  onclick="deleteItem('checklist',${item.id})">Delete</button>
+          </div>
+        </div>`, 'No checklist items yet.');
+
+      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + passwordsHtml + checklistHtml;
     }
 
     // ── Modal ─────────────────────────────────────────────────
@@ -544,6 +557,24 @@
           <textarea id="f-instructions" class="form-control" style="min-height:60px">${v('instructions')}</textarea>
         </div>`;
 
+      if (section === 'checklist') return `
+        <div class="form-group">
+          <label>Title</label>
+          <input id="f-title" class="form-control" type="text" value="${v('title')}" placeholder="e.g. File Taxes">
+        </div>
+        <div class="form-group">
+          <label>Details</label>
+          <textarea id="f-details" class="form-control">${v('details')}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="f-notes" class="form-control" style="min-height:60px">${v('notes')}</textarea>
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:0.75rem">
+          <input id="f-completed" type="checkbox" ${item?.completed ? 'checked' : ''} style="width:1.1rem;height:1.1rem;accent-color:var(--success);cursor:pointer">
+          <label for="f-completed" style="text-transform:none;letter-spacing:0;font-size:0.9rem;font-weight:500;color:var(--text);margin-bottom:0;cursor:pointer">Mark as completed</label>
+        </div>`;
+
       return '';
     }
 
@@ -563,6 +594,8 @@
         item = { id: id ?? Date.now(), account: val('f-account'), type: val('f-type'), balance: val('f-balance'), username: val('f-username'), loginUrl: val('f-loginUrl'), instructions: val('f-instructions') };
       } else if (section === 'passwords') {
         item = { id: id ?? Date.now(), service: val('f-service'), username: val('f-username'), password: val('f-password'), instructions: val('f-instructions') };
+      } else if (section === 'checklist') {
+        item = { id: id ?? Date.now(), title: val('f-title'), details: val('f-details'), notes: val('f-notes'), completed: document.getElementById('f-completed')?.checked ?? false };
       }
 
       if (id) {
@@ -586,7 +619,7 @@
     // ── Helpers ───────────────────────────────────────────────
 
     function sectionLabel(s) {
-      return { firststeps: 'First Step', insurance: 'Insurance Policy', money: 'Account', passwords: 'Password' }[s] || s;
+      return { firststeps: 'First Step', insurance: 'Insurance Policy', money: 'Account', passwords: 'Password', checklist: 'Checklist Item' }[s] || s;
     }
 
     function typeIcon(t) {
