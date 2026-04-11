@@ -1,0 +1,18 @@
+name = "just-in-case"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Static HTML/CSS/JS files served from public/
+# The worker handles only /api/* routes
+assets = { directory = "public" }
+
+[vars]
+# Update APP_URL after first deploy — used to build password reset email links.
+# Find it at: https://dash.cloudflare.com -> Workers & Pages -> just-in-case -> Triggers
+APP_URL    = "https://just-in-case.red.workers.dev"
+EMAIL_FROM = "noreply@yourdomain.com"
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "just-in-case-db"
+database_id   = "f75d17ed-9561-4a98-ba7c-5f786f178895"

@@ -20,12 +20,15 @@ A private emergency information PWA for two users (the family). Stores critical 
 
 ```
 just-in-case/
-├── worker.js        # Cloudflare Worker — all API routes + auth logic
-├── index.html       # Main read-only view of all data (auth-guarded)
-├── editor.html      # Full CRUD editor (auth-guarded)
-├── login.html       # Login page (email + password)
-├── reset.html       # Password reset (request link + set new password)
-└── CLAUDE.md        # This file
+├── worker.js          # Cloudflare Worker — all API routes + auth logic
+├── wrangler.toml      # Cloudflare deployment config (worker name, D1 binding, vars)
+├── CLAUDE.md          # This file
+└── public/
+    ├── index.html     # Main read-only view of all data (auth-guarded)
+    ├── editor.html    # Full CRUD editor (auth-guarded)
+    ├── login.html     # Login page (email + password)
+    ├── reset.html     # Password reset (request link + set new password)
+    └── favicon.svg    # Shield icon
 ```
 
 ---
