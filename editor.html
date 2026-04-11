@@ -361,6 +361,33 @@
 
       let html = '';
 
+      // First Steps Section (moved to top)
+      html += `
+        <div class="section-card">
+          <div class="section-header">
+            <h3><span>🚀</span> First Steps</h3>
+            <button class="btn btn-outline" onclick="addItem('firststeps')">+ Add</button>
+          </div>
+          <div class="section-content">
+            ${appData.firststeps.length > 0 ? appData.firststeps.map(item => `
+              <div class="data-item">
+                <div class="data-item-title">
+                  <span>📝</span>
+                  ${escapeHtml(item.title || '')}
+                </div>
+                <div class="data-item-value" style="white-space:pre-wrap">${escapeHtml(item.details || '')}</div>
+                ${item.notes ? `<div class="data-item-label" style="margin-top:0.5rem"><em>${escapeHtml(item.notes)}</em></div>` : ''}
+                <div class="item-actions">
+                  <button class="btn btn-outline" onclick="copyToClipboard('${escapeHtml(item.details || '')}')">Copy</button>
+                  <button class="btn btn-outline" onclick="editItem('firststeps', ${item.id})">Edit</button>
+                  <button class="btn btn-danger" onclick="deleteItem('firststeps', ${item.id})">Delete</button>
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
+          </div>
+        </div>
+      `;
+
       // Insurance Section
       html += `
         <div class="section-card">
@@ -413,33 +440,6 @@
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
-          </div>
-        </div>
-      `;
-
-      // First Steps Section
-      html += `
-        <div class="section-card">
-          <div class="section-header">
-            <h3><span>🚀</span> First Steps</h3>
-            <button class="btn btn-outline" onclick="addItem('firststeps')">+ Add</button>
-          </div>
-          <div class="section-content">
-            ${appData.firststeps.length > 0 ? appData.firststeps.map(item => `
-              <div class="data-item">
-                <div class="data-item-title">
-                  <span>📝</span>
-                  ${escapeHtml(item.title || '')}
-                </div>
-                <div class="data-item-value" style="white-space:pre-wrap">${escapeHtml(item.details || '')}</div>
-                ${item.notes ? `<div class="data-item-label" style="margin-top:0.5rem"><em>${escapeHtml(item.notes)}</em></div>` : ''}
-                <div class="item-actions">
-                  <button class="btn btn-outline" onclick="copyToClipboard('${escapeHtml(item.details || '')}')">Copy</button>
-                  <button class="btn btn-outline" onclick="editItem('firststeps', ${item.id})">Edit</button>
-                  <button class="btn btn-danger" onclick="deleteItem('firststeps', ${item.id})">Delete</button>
-                </div>
-              </div>
-            `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
           </div>
         </div>
       `;
