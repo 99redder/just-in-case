@@ -9,8 +9,8 @@ assets = { directory = "public" }
 [vars]
 # Update APP_URL after first deploy — used to build password reset email links.
 # Find it at: https://dash.cloudflare.com -> Workers & Pages -> just-in-case -> Triggers
-APP_URL    = "https://just-in-case.red.workers.dev"
-EMAIL_FROM = "noreply@yourdomain.com"
+APP_URL    = "https://just-in-case.99redder.workers.dev"
+EMAIL_FROM = "noreply@easternshore.ai"
 
 [[d1_databases]]
 binding       = "DB"
