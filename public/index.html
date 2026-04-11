@@ -618,13 +618,16 @@
           </div>
           <div class="menu-content" id="money-content">
             ${appData.money.length > 0 ? appData.money.map(item => `
-              <div class="account-card">
-                <div class="account-info">
-                  <div class="account-name">${escapeHtml(item.account)}</div>
-                  <div class="account-balance">${escapeHtml(item.balance)}</div>
-                  <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: ${escapeHtml(item.username)}</div>
+              <div class="menu-item">
+                <div class="menu-item-info">
+                  <div class="menu-item-title">${escapeHtml(item.account)}</div>
+                  <div class="menu-item-subtitle">
+                    <strong>Type:</strong> ${escapeHtml(item.type)}<br>
+                    <strong>Balance:</strong> ${escapeHtml(item.balance)}<br>
+                    <strong>Username:</strong> ${escapeHtml(item.username)}
+                    ${item.instructions ? '<br><strong>Instructions:</strong> ' + escapeHtml(item.instructions) : ''}
+                  </div>
                 </div>
-                <button class="action-btn" onclick="window.open('${escapeHtml(item.loginUrl || "#")}')">View</button>
               </div>
             `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
           </div>
