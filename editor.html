@@ -308,17 +308,37 @@
     let isViewMode = false;
 
     // Storage functions
-    function saveData() {
-      localStorage.setItem('justInCaseData', JSON.stringify(appData));
-      showToast('Changes saved successfully!', 'success');
+    async function saveData() {
+      try {
+        const response = await fetch('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(appData)
+        });
+        
+        if (!response.ok) throw new Error('Failed to save data');
+        
+        showToast('Changes saved successfully!', 'success');
+      } catch (error) {
+        console.error('Save error:', error);
+        showToast('Failed to save changes', 'error');
+      }
     }
 
-    function loadData() {
-      return JSON.parse(localStorage.getItem('justInCaseData')) || defaultData;
+    async function loadData() {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error('Failed to fetch data');
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.warn('Using default data due to fetch error:', error);
+        return defaultData;
+      }
     }
 
     // Render functions
-    function renderApp() {
+    async function renderApp() {
       const app = document.getElementById('app');
       
       if (isViewMode) {
@@ -335,6 +355,9 @@
         `;
         return;
       }
+
+      // Fetch data from Cloudflare Worker
+      appData = await loadData();
 
       let html = '';
 

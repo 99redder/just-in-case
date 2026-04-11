@@ -356,8 +356,18 @@
       ]
     };
 
-    // Load data from localStorage or use defaults
-    let appData = JSON.parse(localStorage.getItem('justInCaseData')) || defaultData;
+    // Load data from Cloudflare Worker or use defaults
+    async function loadAppData() {
+      try {
+        const response = await fetch('/api/data');
+        if (!response.ok) throw new Error('Failed to fetch data');
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.warn('Using default data due to fetch error:', error);
+        return defaultData;
+      }
+    }
 
     // Helper functions
     function escapeHtml(text) {
@@ -378,9 +388,20 @@
     }
 
     // Render functions
-    function renderApp() {
+    async function renderApp() {
       const app = document.getElementById('app');
       
+      // Show loading state
+      app.innerHTML = `
+        <div class="loading" style="padding:2rem 1rem;text-align:center;color:var(--text-muted)">
+          <span class="spinner" style="display:inline-block;width:1rem;height:1rem;border:2px solid var(--surface-2);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite;margin-right:0.5rem"></span>
+          Loading...
+        </div>
+      `;
+
+      // Fetch data
+      let appData = await loadAppData();
+
       let html = '';
 
       // Insurance Section
