@@ -412,6 +412,29 @@
 
       let html = '';
 
+      // First Steps Section (moved to top)
+      html += `
+        <div class="menu-card">
+          <div class="menu-header" onclick="toggleMenu('firststeps')">
+            <h3><span class="menu-icon">🚀</span> First Steps</h3>
+            <span class="chevron">▼</span>
+          </div>
+          <div class="menu-content" id="firststeps-content">
+            ${appData.firststeps.length > 0 ? appData.firststeps.map(item => `
+              <div class="menu-item">
+                <div class="menu-item-info">
+                  <div class="menu-item-title">${escapeHtml(item.title || '')}</div>
+                  <div class="menu-item-subtitle">${escapeHtml(item.notes || '')}</div>
+                </div>
+                <div class="menu-item-action">
+                  <button class="btn btn-outline" onclick="copyToClipboard('${escapeHtml(item.details || '')}')">Details</button>
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
+          </div>
+        </div>
+      `;
+
       // Insurance Section
       html += `
         <div class="menu-card">
@@ -453,29 +476,6 @@
                 <button class="action-btn" onclick="window.open('${escapeHtml(item.loginUrl)}')">View</button>
               </div>
             `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
-          </div>
-        </div>
-      `;
-
-      // First Steps Section
-      html += `
-        <div class="menu-card">
-          <div class="menu-header" onclick="toggleMenu('firststeps')">
-            <h3><span class="menu-icon">🚀</span> First Steps</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="menu-content" id="firststeps-content">
-            ${appData.firststeps.length > 0 ? appData.firststeps.map(item => `
-              <div class="menu-item">
-                <div class="menu-item-info">
-                  <div class="menu-item-title">${escapeHtml(item.title || '')}</div>
-                  <div class="menu-item-subtitle">${escapeHtml(item.notes || '')}</div>
-                </div>
-                <div class="menu-item-action">
-                  <button class="btn btn-outline" onclick="copyToClipboard('${escapeHtml(item.details || '')}')">Details</button>
-                </div>
-              </div>
-            `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
           </div>
         </div>
       `;
