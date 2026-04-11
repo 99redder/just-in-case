@@ -310,7 +310,7 @@
       <span>🛡️</span>
       Just In Case
     </div>
-    <button class="btn btn-secondary" id="settings-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">⚙️</button>
+    <button class="btn btn-secondary" id="edit-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">⚙️</button>
   </header>
 
   <main class="main-content">
@@ -327,7 +327,7 @@
             <div class="menu-item-subtitle">Primary Plan</div>
           </div>
           <div class="menu-item-action">
-            <button class="btn btn-outline" onclick="copyToClipboard('Health Insurance Details')">Details</button>
+            <button class="btn btn-outline" onclick="copyToClipboard('Health Insurance: Blue Cross Blue Shield - Member ID BCBS-12345678')">Details</button>
           </div>
         </div>
         <div class="menu-item">
@@ -336,7 +336,7 @@
             <div class="menu-item-subtitle">State Farm</div>
           </div>
           <div class="menu-item-action">
-            <button class="btn btn-outline" onclick="copyToClipboard('Auto Insurance Details')">Details</button>
+            <button class="btn btn-outline" onclick="copyToClipboard('Auto Insurance: State Farm - Policy AF-7890123')">Details</button>
           </div>
         </div>
         <div class="menu-item">
@@ -345,7 +345,16 @@
             <div class="menu-item-subtitle">6AL Property</div>
           </div>
           <div class="menu-item-action">
-            <button class="btn btn-outline" onclick="copyToClipboard('Rental Insurance Details')">Details</button>
+            <button class="btn btn-outline" onclick="copyToClipboard('Rental Insurance: Nationwide - Policy RL-4567890')">Details</button>
+          </div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-info">
+            <div class="menu-item-title">Life Insurance</div>
+            <div class="menu-item-subtitle">Term Life Policy</div>
+          </div>
+          <div class="menu-item-action">
+            <button class="btn btn-outline" onclick="copyToClipboard('Life Insurance: Prudential - Policy LT-2345678, Beneficiary: Spouse')">Details</button>
           </div>
         </div>
       </div>
@@ -362,29 +371,33 @@
           <div class="account-info">
             <div class="account-name">Chase Checking</div>
             <div class="account-balance">$12,450.82</div>
+            <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: chris.jane</div>
           </div>
-          <button class="action-btn" onclick="copyToClipboard('Chase Login')">View</button>
+          <button class="action-btn" onclick="window.open('https://chase.com')">View</button>
         </div>
         <div class="account-card">
           <div class="account-info">
             <div class="account-name">Capital One Savings</div>
             <div class="account-balance">$8,235.19</div>
+            <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: chris.jane</div>
           </div>
-          <button class="action-btn" onclick="copyToClipboard('Capital One Login')">View</button>
+          <button class="action-btn" onclick="window.open('https://capitalone.com')">View</button>
         </div>
         <div class="account-card">
           <div class="account-info">
             <div class="account-name">Vanguard IRA</div>
             <div class="account-balance">$45,678.42</div>
+            <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: 99redder</div>
           </div>
-          <button class="action-btn" onclick="copyToClipboard('Vanguard Login')">View</button>
+          <button class="action-btn" onclick="window.open('https://vanguard.com')">View</button>
         </div>
         <div class="account-card">
           <div class="account-info">
             <div class="account-name">Robinhood</div>
-            <div class="account-balance negative">-$2,145.00</div>
+            <div class="account-balance">$2,145.00</div>
+            <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: chris@99redder.com</div>
           </div>
-          <button class="action-btn" onclick="copyToClipboard('Robinhood Login')">View</button>
+          <button class="action-btn" onclick="window.open('https://robinhood.com')">View</button>
         </div>
       </div>
     </div>
@@ -441,32 +454,11 @@
   </div>
 
   <script>
-    // Menu toggle
-    function toggleMenu(menuId) {
-      const content = document.getElementById(menuId + '-content');
-      const chevron = document.querySelector(`[onclick="toggleMenu('${menuId}')"] .chevron`);
-      
-      content.classList.toggle('expanded');
-      
-      if (content.classList.contains('expanded')) {
-        chevron.style.transform = 'rotate(180deg)';
-        // Close other menus
-        document.querySelectorAll('.menu-content').forEach(el => {
-          if (el.id !== menuId + '-content') {
-            el.classList.remove('expanded');
-            document.querySelector(`[onclick="toggleMenu('${el.id.replace('-content', '')}')] .chevron`).style.transform = 'rotate(0deg)';
-          }
-        });
-      } else {
-        chevron.style.transform = 'rotate(0deg)';
-      }
-    }
-
     // Password reveal
     function togglePassword(element) {
       element.classList.toggle('revealed');
       if (element.classList.contains('revealed')) {
-        // In a real app, fetch from secure storage
+        // In a real app, this would decrypt from secure storage
         element.textContent = 'password123'; // Demo password
         setTimeout(() => {
           element.classList.remove('revealed');
@@ -504,9 +496,11 @@
       }, 2500);
     }
 
-    // Settings button
-    document.getElementById('settings-btn').addEventListener('click', () => {
-      showToast('Settings coming soon!', 'error');
+    // Settings button - go to editor
+    document.getElementById('edit-btn').addEventListener('click', () => {
+      if (confirm('Open editor to make changes?')) {
+        window.location.href = 'editor.html';
+      }
     });
   </script>
 </body>
