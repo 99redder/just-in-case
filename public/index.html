@@ -310,10 +310,7 @@
       <span>🛡️</span>
       Just In Case
     </div>
-    <div style="display:flex;gap:0.4rem;align-items:center">
-      <button class="btn btn-secondary" id="edit-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">⚙️</button>
-      <button class="btn btn-outline" id="logout-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">Sign Out</button>
-    </div>
+    <button class="btn btn-outline" id="logout-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">Sign Out</button>
   </header>
 
   <main class="main-content" id="app">
@@ -550,13 +547,6 @@
         toast.classList.remove('show');
       }, 2500);
     }
-
-    // Settings button - go to editor
-    document.getElementById('edit-btn').addEventListener('click', () => {
-      if (confirm('Open editor to make changes?')) {
-        window.location.href = 'editor.html';
-      }
-    });
 
     // Logout
     document.getElementById('logout-btn').addEventListener('click', async () => {
