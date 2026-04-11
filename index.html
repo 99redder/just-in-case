@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Just In Case</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-2: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding-bottom: 2rem;
+    }
+
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--surface-2);
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .app-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .app-title span {
+      font-size: 1.25rem;
+    }
+
+    .main-content {
+      max-width: 500px;
+      margin: 0 auto;
+      padding: 1rem;
+    }
+
+    .menu-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 1rem;
+      overflow: hidden;
+      border: 1px solid var(--surface-2);
+    }
+
+    .menu-header {
+      padding: 0.85rem 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.2s;
+    }
+
+    .menu-header:active {
+      background: var(--surface-2);
+    }
+
+    .menu-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .menu-icon {
+      font-size: 1.3rem;
+    }
+
+    .chevron {
+      transition: transform 0.3s ease;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .menu-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+      background: var(--bg);
+    }
+
+    .menu-content.expanded {
+      max-height: 2000px;
+    }
+
+    .menu-item {
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid var(--surface-2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .menu-item:last-child {
+      border-bottom: none;
+    }
+
+    .menu-item-info {
+      flex: 1;
+    }
+
+    .menu-item-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .menu-item-subtitle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .menu-item-action {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .menu-item-action .btn {
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+    }
+
+    .btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:active {
+      opacity: 0.8;
+    }
+
+    .btn-secondary {
+      background: var(--surface-2);
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--surface-2);
+      color: var(--text-muted);
+    }
+
+    .empty-state {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* Passwords section specific */
+    .password-group {
+      border-bottom: 1px solid var(--surface-2);
+      padding: 0.8rem 1rem;
+    }
+
+    .password-group:last-child {
+      border-bottom: none;
+    }
+
+    .password-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+    }
+
+    .password-label {
+      flex: 1;
+      font-size: 0.88rem;
+    }
+
+    .password-display {
+      font-family: "Courier New", monospace;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      word-break: break-all;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .password-display.revealed {
+      color: var(--text);
+    }
+
+    /* Where We Have Money section */
+    .account-card {
+      background: var(--surface-2);
+      border-radius: 10px;
+      padding: 0.8rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .account-info {
+      flex: 1;
+    }
+
+    .account-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 0.15rem;
+    }
+
+    .account-balance {
+      font-size: 0.95rem;
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    .account-balance.negative {
+      color: var(--danger);
+    }
+
+    .action-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0.75rem 1.25rem;
+      border-radius: 50px;
+      box-shadow: var(--shadow);
+      font-size: 0.85rem;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-10px);
+    }
+
+    .toast.success { border-left: 4px solid var(--success); }
+    .toast.error { border-left: 4px solid var(--danger); }
+
+    @media (max-width: 380px) {
+      .menu-item-action .btn { padding: 0.3rem 0.5rem; font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-title">
+      <span>🛡️</span>
+      Just In Case
+    </div>
+    <button class="btn btn-secondary" id="settings-btn" style="padding:0.35rem 0.6rem;font-size:0.75rem">⚙️</button>
+  </header>
+
+  <main class="main-content">
+    <!-- Insurance Section -->
+    <div class="menu-card">
+      <div class="menu-header" onclick="toggleMenu('insurance')">
+        <h3><span class="menu-icon">🛡️</span> Insurance</h3>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="menu-content" id="insurance-content">
+        <div class="menu-item">
+          <div class="menu-item-info">
+            <div class="menu-item-title">Health Insurance</div>
+            <div class="menu-item-subtitle">Primary Plan</div>
+          </div>
+          <div class="menu-item-action">
+            <button class="btn btn-outline" onclick="copyToClipboard('Health Insurance Details')">Details</button>
+          </div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-info">
+            <div class="menu-item-title">Auto Insurance</div>
+            <div class="menu-item-subtitle">State Farm</div>
+          </div>
+          <div class="menu-item-action">
+            <button class="btn btn-outline" onclick="copyToClipboard('Auto Insurance Details')">Details</button>
+          </div>
+        </div>
+        <div class="menu-item">
+          <div class="menu-item-info">
+            <div class="menu-item-title">Rental Insurance</div>
+            <div class="menu-item-subtitle">6AL Property</div>
+          </div>
+          <div class="menu-item-action">
+            <button class="btn btn-outline" onclick="copyToClipboard('Rental Insurance Details')">Details</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Where We Have Money Section -->
+    <div class="menu-card">
+      <div class="menu-header" onclick="toggleMenu('money')">
+        <h3><span class="menu-icon">💰</span> Where We Have Money</h3>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="menu-content" id="money-content">
+        <div class="account-card">
+          <div class="account-info">
+            <div class="account-name">Chase Checking</div>
+            <div class="account-balance">$12,450.82</div>
+          </div>
+          <button class="action-btn" onclick="copyToClipboard('Chase Login')">View</button>
+        </div>
+        <div class="account-card">
+          <div class="account-info">
+            <div class="account-name">Capital One Savings</div>
+            <div class="account-balance">$8,235.19</div>
+          </div>
+          <button class="action-btn" onclick="copyToClipboard('Capital One Login')">View</button>
+        </div>
+        <div class="account-card">
+          <div class="account-info">
+            <div class="account-name">Vanguard IRA</div>
+            <div class="account-balance">$45,678.42</div>
+          </div>
+          <button class="action-btn" onclick="copyToClipboard('Vanguard Login')">View</button>
+        </div>
+        <div class="account-card">
+          <div class="account-info">
+            <div class="account-name">Robinhood</div>
+            <div class="account-balance negative">-$2,145.00</div>
+          </div>
+          <button class="action-btn" onclick="copyToClipboard('Robinhood Login')">View</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Passwords Section -->
+    <div class="menu-card">
+      <div class="menu-header" onclick="toggleMenu('passwords')">
+        <h3><span class="menu-icon">🔑</span> Passwords</h3>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="menu-content" id="passwords-content">
+        <div class="password-group">
+          <div class="password-item">
+            <span class="password-label">Gmail / Google</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('Gmail Password')">Copy</button>
+          </div>
+          <div class="password-item">
+            <span class="password-label">iCloud</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('iCloud Password')">Copy</button>
+          </div>
+          <div class="password-item">
+            <span class="password-label">GitHub</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('GitHub Password')">Copy</button>
+          </div>
+          <div class="password-item">
+            <span class="password-label">LastPass</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('LastPass Password')">Copy</button>
+          </div>
+        </div>
+        <div class="password-group">
+          <div class="password-item">
+            <span class="password-label">Netflix</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('Netflix Password')">Copy</button>
+          </div>
+          <div class="password-item">
+            <span class="password-label">Disney+</span>
+            <span class="password-display" onclick="togglePassword(this)">••••••••••••</span>
+            <button class="btn btn-secondary" onclick="copyToClipboard('Disney+ Password')">Copy</button>
+          </div>
+        </div>
+        <div class="empty-state">Tap password to reveal, button to copy</div>
+      </div>
+    </div>
+  </main>
+
+  <div class="toast" id="toast">
+    <span id="toast-icon">✓</span>
+    <span id="toast-message">Copied!</span>
+  </div>
+
+  <script>
+    // Menu toggle
+    function toggleMenu(menuId) {
+      const content = document.getElementById(menuId + '-content');
+      const chevron = document.querySelector(`[onclick="toggleMenu('${menuId}')"] .chevron`);
+      
+      content.classList.toggle('expanded');
+      
+      if (content.classList.contains('expanded')) {
+        chevron.style.transform = 'rotate(180deg)';
+        // Close other menus
+        document.querySelectorAll('.menu-content').forEach(el => {
+          if (el.id !== menuId + '-content') {
+            el.classList.remove('expanded');
+            document.querySelector(`[onclick="toggleMenu('${el.id.replace('-content', '')}')] .chevron`).style.transform = 'rotate(0deg)';
+          }
+        });
+      } else {
+        chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    // Password reveal
+    function togglePassword(element) {
+      element.classList.toggle('revealed');
+      if (element.classList.contains('revealed')) {
+        // In a real app, fetch from secure storage
+        element.textContent = 'password123'; // Demo password
+        setTimeout(() => {
+          element.classList.remove('revealed');
+          element.textContent = '••••••••••••';
+        }, 5000); // Auto-hide after 5 seconds
+      }
+    }
+
+    // Copy to clipboard
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('Copied to clipboard!', 'success');
+      }).catch(() => {
+        showToast('Failed to copy', 'error');
+      });
+    }
+
+    // Toast notification
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const toastIcon = document.getElementById('toast-icon');
+      const toastMessage = document.getElementById('toast-message');
+      
+      toastMessage.textContent = message;
+      toast.className = `toast show ${type}`;
+      
+      if (type === 'success') {
+        toastIcon.textContent = '✓';
+      } else {
+        toastIcon.textContent = '!';
+      }
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    // Settings button
+    document.getElementById('settings-btn').addEventListener('click', () => {
+      showToast('Settings coming soon!', 'error');
+    });
+  </script>
+</body>
+</html>
