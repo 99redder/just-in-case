@@ -276,6 +276,12 @@
   <script>
     // Default data structure
     const defaultData = {
+      firststeps: [
+        { id: 1, title: 'Contact Information', details: 'Key people to call:\n- Spouse: 555-123-4567\n- Jane: 555-987-6543\n- Attorney: 555-246-8101', notes: 'Call first if something happens' },
+        { id: 2, title: 'Will & Estate', details: 'Location of documents:\n- Will: Filed with attorney John Smith\n- Trust: Stored in safe deposit box #123\n- Power of Attorney: Same location', notes: 'Provide death certificate copies' },
+        { id: 3, title: 'Digital Assets', details: 'What to do with online accounts:\n- Social Media: Facebook memorial, Twitter deleted\n- Email: Forward to Jane for 6 months\n- Cloud Storage: Google Drive shared with Jane', notes: 'Delete unused accounts after 1 year' },
+        { id: 4, title: 'Debts & Obligations', details: 'What needs to be paid:\n- Mortgage: 6AL Property - $2,500/mo\n- Credit Cards: Close all, pay off balances\n- Car Loans: 2 vehicles - 95EB and 446BB', notes: 'Contact banks immediately' }
+      ],
       insurance: [
         { id: 1, type: 'Health', name: 'Primary Plan', details: 'Plan: Blue Cross Blue Shield\nMember ID: BCBS-12345678\nGroup: BCBS-9876\nPhone: 1-800-XXX-XXXX\nPolicy: Self + Spouse', notes: 'Dental and vision included' },
         { id: 2, type: 'Auto', name: 'State Farm', details: 'Agent: John Smith\nPhone: 555-123-4567\nPolicy: AF-7890123\nCoverage: Full', notes: 'Roadside assistance included' },
@@ -388,6 +394,33 @@
         </div>
       `;
 
+      // First Steps Section
+      html += `
+        <div class="section-card">
+          <div class="section-header">
+            <h3><span>🚀</span> First Steps</h3>
+            <button class="btn btn-outline" onclick="addItem('firststeps')">+ Add</button>
+          </div>
+          <div class="section-content">
+            ${appData.firststeps.length > 0 ? appData.firststeps.map(item => `
+              <div class="data-item">
+                <div class="data-item-title">
+                  <span>📝</span>
+                  ${escapeHtml(item.title || '')}
+                </div>
+                <div class="data-item-value" style="white-space:pre-wrap">${escapeHtml(item.details || '')}</div>
+                ${item.notes ? `<div class="data-item-label" style="margin-top:0.5rem"><em>${escapeHtml(item.notes)}</em></div>` : ''}
+                <div class="item-actions">
+                  <button class="btn btn-outline" onclick="copyToClipboard('${escapeHtml(item.details || '')}')">Copy</button>
+                  <button class="btn btn-outline" onclick="editItem('firststeps', ${item.id})">Edit</button>
+                  <button class="btn btn-danger" onclick="deleteItem('firststeps', ${item.id})">Delete</button>
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
+          </div>
+        </div>
+      `;
+
       // Passwords Section
       html += `
         <div class="section-card">
@@ -478,7 +511,7 @@
       const title = isEditing ? `Edit ${type}` : `Add ${type}`;
       const btnText = isEditing ? 'Update' : 'Save';
 
-      const existingValue = item || { type, name: '', details: '', notes: '', username: '', password: '', instructions: '' };
+      const existingValue = item || { type: 'firststeps', title: '', details: '', notes: '', name: '', username: '', password: '', instructions: '' };
 
       const html = `
         <div class="modal-overlay" onclick="closeModal(event)">
@@ -546,6 +579,12 @@
                   <input type="text" class="form-control" id="edit-loginurl" value="${escapeHtml(existingValue.loginUrl || '')}" placeholder="https://...">
                 </div>
               ` : ''}
+              ${type === 'firststeps' ? `
+                <div class="form-group">
+                  <label>Title</label>
+                  <input type="text" class="form-control" id="edit-title" value="${escapeHtml(existingValue.title || '')}" placeholder="e.g., Contact Information">
+                </div>
+              ` : ''}
               <div class="form-group">
                 <label>Notes / Instructions</label>
                 <textarea class="form-control multiline" id="edit-notes" placeholder="Any additional information...">${escapeHtml(existingValue.notes || existingValue.instructions || '')}</textarea>
@@ -569,21 +608,30 @@
     }
 
     function saveItem(type, id) {
-      const item = {
-        id: id || Date.now(),
-        type: document.getElementById('edit-type')?.value || type,
-        name: document.getElementById('edit-name')?.value || '',
-        details: document.getElementById('edit-details')?.value || '',
-        notes: document.getElementById('edit-notes')?.value || '',
-        username: document.getElementById('edit-username')?.value || document.getElementById('edit-musername')?.value || '',
-        password: document.getElementById('edit-password')?.value || '••••••••••••',
-        service: document.getElementById('edit-service')?.value || '',
-        account: document.getElementById('edit-account')?.value || '',
-        type: document.getElementById('edit-account-type')?.value || type,
-        balance: document.getElementById('edit-balance')?.value || '',
-        loginUrl: document.getElementById('edit-loginurl')?.value || '',
-        instructions: document.getElementById('edit-notes')?.value || ''
-      };
+      let item;
+      if (type === 'firststeps') {
+        item = {
+          id: id || Date.now(),
+          title: document.getElementById('edit-title')?.value || '',
+          details: document.getElementById('edit-details')?.value || '',
+          notes: document.getElementById('edit-notes')?.value || ''
+        };
+      } else {
+        item = {
+          id: id || Date.now(),
+          type: document.getElementById('edit-type')?.value || type,
+          name: document.getElementById('edit-name')?.value || '',
+          details: document.getElementById('edit-details')?.value || '',
+          notes: document.getElementById('edit-notes')?.value || '',
+          username: document.getElementById('edit-username')?.value || document.getElementById('edit-musername')?.value || '',
+          password: document.getElementById('edit-password')?.value || '••••••••••••',
+          service: document.getElementById('edit-service')?.value || '',
+          account: document.getElementById('edit-account')?.value || '',
+          balance: document.getElementById('edit-balance')?.value || '',
+          loginUrl: document.getElementById('edit-loginurl')?.value || '',
+          instructions: document.getElementById('edit-notes')?.value || ''
+        };
+      }
 
       if (type === 'insurance') {
         appData.insurance = id 
@@ -597,6 +645,10 @@
         appData.passwords = id 
           ? appData.passwords.map(i => i.id === id ? item : i)
           : [...appData.passwords, item];
+      } else if (type === 'firststeps') {
+        appData.firststeps = id 
+          ? appData.firststeps.map(i => i.id === id ? item : i)
+          : [...appData.firststeps, item];
       }
 
       saveData();
@@ -613,6 +665,8 @@
         appData.money = appData.money.filter(i => i.id !== id);
       } else if (type === 'passwords') {
         appData.passwords = appData.passwords.filter(i => i.id !== id);
+      } else if (type === 'firststeps') {
+        appData.firststeps = appData.firststeps.filter(i => i.id !== id);
       }
 
       saveData();
