@@ -523,6 +523,17 @@
     // embedding it inline (which breaks on single quotes, newlines, etc.)
     let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
 
+    // Ensure data has all required sections (handles API responses with partial data)
+    function normalizeData(data) {
+      return {
+        firststeps: Array.isArray(data?.firststeps) ? data.firststeps : [],
+        insurance: Array.isArray(data?.insurance) ? data.insurance : [],
+        money: Array.isArray(data?.money) ? data.money : [],
+        passwords: Array.isArray(data?.passwords) ? data.passwords : [],
+        checklist: Array.isArray(data?.checklist) ? data.checklist : []
+      };
+    }
+
     // Render functions
     async function renderApp() {
       const app = document.getElementById('app');
@@ -536,7 +547,8 @@
       `;
 
       // Fetch data
-      appData = await loadAppData();
+      const loadData = await loadAppData();
+      appData = normalizeData(loadData);
 
       let html = '';
 
