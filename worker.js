@@ -277,27 +277,27 @@ async function sendResetEmail(to, resetUrl, env) {
 // ── DB bootstrap ──────────────────────────────────────────────
 
 async function ensureAuthTables(env) {
-  // Creates auth tables and seeds the two allowed user rows on first run.
-  // Subsequent calls are fast no-ops (IF NOT EXISTS / INSERT OR IGNORE).
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password_hash TEXT
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS password_resets (
-      token TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      expires_at INTEGER NOT NULL
-    );
-    INSERT OR IGNORE INTO users (email) VALUES ('***@***');
-    INSERT OR IGNORE INTO users (email) VALUES ('***@***');
-  `);
+  // Run each statement individually — D1's exec() is unreliable with multiple statements.
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT
+  )`).run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  )`).run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_resets (
+    token TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+  )`).run();
+
+  await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind('***@***').run();
+  await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind('***@***').run();
 }
 
 // ── Default app data ──────────────────────────────────────────
