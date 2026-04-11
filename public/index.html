@@ -193,6 +193,32 @@
       font-size: 0.9rem;
     }
 
+    /* Checklist specific styles */
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 0;
+    }
+
+    .checklist-item input[type="checkbox"] {
+      width: 1.1rem;
+      height: 1.1rem;
+      margin-top: 0.15rem;
+      accent-color: var(--success);
+      cursor: pointer;
+    }
+
+    .checklist-item.completed .checklist-text {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .checklist-text {
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+
     /* Passwords section specific */
     .password-group {
       border-bottom: 1px solid var(--surface-2);
@@ -438,6 +464,12 @@
         { id: 4, service: 'LastPass', username: 'chris@99redder.com', password: 'password123', instructions: 'Emergency access to Spouse' },
         { id: 5, service: 'Netflix', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
         { id: 6, service: 'Disney+', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' }
+      ],
+      checklist: [
+        { id: 1, text: 'Review emergency contacts', completed: false },
+        { id: 2, text: 'Update will and estate documents', completed: true },
+        { id: 3, text: 'Check insurance policies expiration', completed: false },
+        { id: 4, text: 'Organize digital asset list', completed: false }
       ]
     };
 
@@ -485,7 +517,7 @@
 
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
-    let appData = { firststeps: [], insurance: [], money: [], passwords: [] };
+    let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
 
     // Render functions
     async function renderApp() {
@@ -572,6 +604,24 @@
         </div>
       `;
 
+      // Checklist Section
+      html += `
+        <div class="menu-card">
+          <div class="menu-header" onclick="toggleMenu('checklist')">
+            <h3><span class="menu-icon">📋</span> Checklist</h3>
+            <span class="chevron">▼</span>
+          </div>
+          <div class="menu-content" id="checklist-content">
+            ${appData.checklist.length > 0 ? appData.checklist.map(item => `
+              <div class="menu-item checklist-item ${item.completed ? 'completed' : ''}">
+                <input type="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleChecklistItem(${item.id})">
+                <span class="checklist-text">${escapeHtml(item.text)}</span>
+              </div>
+            `).join('') : '<div class="empty-state">No checklist items added yet.</div>'}
+          </div>
+        </div>
+      `;
+
       // Passwords Section
       html += `
         <div class="menu-card">
@@ -594,6 +644,15 @@
       `;
 
       app.innerHTML = html;
+    }
+
+    // Checklist toggle
+    function toggleChecklistItem(id) {
+      const item = appData.checklist.find(i => i.id === id);
+      if (item) {
+        item.completed = !item.completed;
+        renderApp();
+      }
     }
 
     // Password reveal — reads actual value from data-pw attribute
