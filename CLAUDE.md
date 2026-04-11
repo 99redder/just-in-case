@@ -28,8 +28,20 @@ just-in-case/
     ├── editor.html    # Full CRUD editor (auth-guarded)
     ├── login.html     # Login page (email + password)
     ├── reset.html     # Password reset (request link + set new password)
+    ├── sw.js          # Service worker — network-first PWA caching
     └── favicon.svg    # Shield icon
 ```
+
+---
+
+## Deployment
+
+- **Live URL**: `https://just-in-case.99redder.workers.dev`
+- **Deploy command**: `wrangler deploy`
+- **D1 database name**: `just-in-case-db`
+- **D1 database ID**: `f75d17ed-9561-4a98-ba7c-5f786f178895`
+- **Email from address**: `noreply@easternshore.ai` (verified in Resend)
+- **RESEND_API_KEY**: stored as a Wrangler secret (`wrangler secret put RESEND_API_KEY`)
 
 ---
 
@@ -67,6 +79,8 @@ CREATE TABLE password_resets (
 ```
 
 User rows for both emails are auto-inserted with `INSERT OR IGNORE` when `ensureAuthTables` runs. No password is set until the user completes the reset flow.
+
+> **Important**: `ensureAuthTables` uses individual `prepare().run()` calls for each statement — D1's `exec()` is unreliable with multiple semicolon-separated statements.
 
 ### Auth API Endpoints
 
@@ -107,9 +121,9 @@ The `<body>` tag has `style="display:none"` to prevent a flash of content before
 
 ## Data Storage
 
-- Single D1 table: `app_data` with columns `id` and `content` (JSON string)
-- GET `/api/data` — returns the stored JSON; falls back to `defaultAppData()` if table is empty
-- POST `/api/data` — upserts the full JSON payload
+- Single D1 table: `app_data` with columns `id` (INTEGER) and `content` (JSON string)
+- `GET /api/data` — returns the stored JSON; falls back to `defaultAppData()` if table is empty
+- `POST /api/data` — upserts the full JSON payload (replaces entire content)
 
 ### Data Schema
 
@@ -118,26 +132,76 @@ The `<body>` tag has `style="display:none"` to prevent a flash of content before
   "firststeps": [{ "id", "title", "details", "notes" }],
   "insurance":  [{ "id", "type", "name", "details", "notes" }],
   "money":      [{ "id", "account", "type", "balance", "loginUrl", "username", "instructions" }],
-  "passwords":  [{ "id", "service", "username", "password", "instructions" }]
+  "passwords":  [{ "id", "service", "username", "password", "instructions" }],
+  "checklist":  [{ "id", "text", "completed" }]
 }
 ```
 
 ---
 
-## Environment Variables (wrangler.toml)
+## Main View (index.html)
 
-```toml
-[vars]
-APP_URL = "https://your-deployed-domain.workers.dev"
-EMAIL_FROM = "noreply@yourdomain.com"
+The main view is **read-only** — it fetches data and displays it but has no edit capability. The editor is a separate page (`editor.html`).
 
-# Add as a secret (wrangler secret put RESEND_API_KEY):
-# RESEND_API_KEY = "re_..."
+### Key Design Patterns
+
+**Module-level `appData` store** — all data is held in a module-level variable so onclick handlers can look up values by ID rather than embedding them inline. Inline onclick attributes break on content with single quotes, newlines, or Unicode.
+
+```javascript
+let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
 ```
 
-- `APP_URL` — used to build the reset link URL in reset emails
-- `EMAIL_FROM` — the "from" address in reset emails (must be verified in Resend)
-- `RESEND_API_KEY` — Resend API key for sending reset emails; if not set, reset emails are silently skipped (worker still returns success)
+**`showDetails(section, id)`** — opens a bottom-sheet modal showing the full details text for a First Steps or Insurance item. URLs in the text are automatically converted to tappable hyperlinks by `linkify()`. The modal also has a Copy button.
+
+**`linkify(text)`** — scans text for `https?://` URLs, HTML-escapes everything else, and wraps each URL in an `<a target="_blank">` tag. Used inside the details modal.
+
+**`copyField(section, id, field)`** — copies a specific field value to the clipboard by looking up the item in `appData` by ID. Used for the Password Copy button.
+
+**`togglePassword(el)`** — reveals/hides a password. The actual password is stored in `data-pw` on the element (not inline in onclick). Auto-hides after 5 seconds.
+
+**`toggleChecklistItem(id)`** — flips a checklist item's `completed` boolean and re-renders the app. Note: this only persists in memory for the session; the editor must be used to save changes to D1.
+
+### Sections Rendered
+
+| Section | Interaction |
+|---------|------------|
+| First Steps | Details button → modal |
+| Insurance | Details button → modal |
+| Where We Have Money | View button → opens `loginUrl` in new tab |
+| Passwords | Click masked text to reveal/hide; Copy button |
+| Checklist | Checkboxes toggle `completed` state in memory |
+
+---
+
+## Editor (editor.html)
+
+Full CRUD for all sections. Uses a modal pattern:
+- `openModal(section, idOrNull)` — appends a modal to `document.body`; `null` id = new item
+- `saveItem(section, idArg)` — reads form fields, updates `appData`, POSTs full payload to `/api/data`
+- `deleteItem(section, id)` — removes item from `appData`, POSTs to save
+- Clicking the modal backdrop closes it without saving
+
+---
+
+## Service Worker (sw.js)
+
+Network-first strategy: always fetches fresh from the server; only falls back to cache if the network is unreachable. Skips all `/api/*` requests entirely.
+
+- `self.skipWaiting()` on install — activates immediately without waiting for old tabs to close
+- Clears all old caches on activate, then calls `self.clients.claim()`
+- All pages call `navigator.serviceWorker.register('/sw.js').then(reg => reg.update())` — this forces a version check on every page load, ensuring users always get the latest code within seconds of a deploy
+
+To force a full cache bust after a deploy, increment `VERSION` in `sw.js`.
+
+---
+
+## Password Reset Flow
+
+1. User visits `/reset.html` (no token in URL) → enters email → submits
+2. Worker creates a reset token (expires in 1 hour), emails a link to `/reset.html?token=<token>`
+3. User clicks link → `/reset.html` detects `?token=` → shows "Set New Password" form
+4. User submits new password → worker validates token, hashes password, updates `users` table, invalidates all sessions for that email
+5. User is shown a success screen with a link back to login
 
 ---
 
@@ -150,18 +214,6 @@ After deploying for the first time, neither user has a password. Each user must:
 3. Enter their email address
 4. Click the reset link in their email
 5. Set a password (min 8 characters)
-
-This only works once per user — subsequent resets follow the same flow.
-
----
-
-## Password Reset Flow
-
-1. User visits `/reset.html` (no token in URL) → enters email → submits
-2. Worker creates a reset token (expires in 1 hour), emails a link to `/reset.html?token=<token>`
-3. User clicks link → `/reset.html` detects `?token=` → shows "Set New Password" form
-4. User submits new password → worker validates token, hashes password, updates `users` table, invalidates all sessions for that email
-5. User is shown a success screen with a link back to login
 
 ---
 
@@ -192,3 +244,4 @@ All pages share the same CSS variables:
 - Setting a new password invalidates all active sessions for that user
 - The `ALLOWED_EMAILS` list is the only mechanism preventing unauthorized access — there is no account creation endpoint
 - CORS headers allow `*` origin (acceptable since the app is private and auth-guarded at the API level)
+- `escapeHtml()` is used on all user-supplied content before inserting into innerHTML to prevent XSS
