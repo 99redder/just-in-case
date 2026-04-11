@@ -525,10 +525,21 @@
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
+      // Normalize money items with defaults
+      const normalizeMoneyItem = (item) => ({
+        id: item?.id,
+        account: item?.account || 'Unknown Account',
+        type: item?.type || 'Bank',
+        balance: item?.balance || '$0.00',
+        loginUrl: item?.loginUrl || '#',
+        username: item?.username || '',
+        instructions: item?.instructions || ''
+      });
+
       return {
         firststeps: Array.isArray(data?.firststeps) ? data.firststeps : [],
         insurance: Array.isArray(data?.insurance) ? data.insurance : [],
-        money: Array.isArray(data?.money) ? data.money : [],
+        money: Array.isArray(data?.money) ? data.money.map(normalizeMoneyItem) : [],
         passwords: Array.isArray(data?.passwords) ? data.passwords : [],
         checklist: Array.isArray(data?.checklist) ? data.checklist : []
       };
@@ -613,7 +624,7 @@
                   <div class="account-balance">${escapeHtml(item.balance)}</div>
                   <div class="account-balance" style="font-size:0.75rem;color:var(--text-muted)">Username: ${escapeHtml(item.username)}</div>
                 </div>
-                <button class="action-btn" onclick="window.open('${escapeHtml(item.loginUrl)}')">View</button>
+                <button class="action-btn" onclick="window.open('${escapeHtml(item.loginUrl || "#")}')">View</button>
               </div>
             `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
           </div>
