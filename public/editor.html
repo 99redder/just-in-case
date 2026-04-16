@@ -578,12 +578,30 @@
       return '';
     }
 
+    function fixDuplicateIds(data) {
+      let changed = false;
+      for (const section of Object.keys(data)) {
+        if (!Array.isArray(data[section])) continue;
+        const seen = new Set();
+        const maxId = Math.max(0, ...data[section].map(i => Number(i.id) || 0));
+        let next = Math.max(Date.now(), maxId + 1);
+        for (const item of data[section]) {
+          if (!item.id || seen.has(item.id)) {
+            item.id = next++;
+            changed = true;
+          }
+          seen.add(item.id);
+        }
+      }
+      return changed;
+    }
+
     function val(id) {
       return document.getElementById(id)?.value?.trim() ?? '';
     }
 
     function saveItem(section, idArg) {
-      const id = idArg === 'null' ? null : Number(idArg);
+      const id = (idArg === null || idArg === 'null') ? null : Number(idArg);
       let item;
 
       if (section === 'firststeps') {
@@ -684,6 +702,7 @@
 
       try {
         appData = await loadData();
+        if (fixDuplicateIds(appData)) await saveData();
       } catch (e) { /* use empty defaults */ }
 
       document.body.style.display = '';
