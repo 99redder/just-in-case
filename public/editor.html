@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Just In Case — Editor</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
     :root {
       --bg: #0f172a;
@@ -100,7 +101,10 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
     }
+    .section-header:active { opacity: 0.85; }
 
     .section-header h3 {
       margin: 0;
@@ -109,6 +113,20 @@
       display: flex;
       align-items: center;
       gap: 0.6rem;
+      flex: 1;
+    }
+
+    .section-header .collapse-icon {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      margin-left: 0.5rem;
+    }
+    .section-card.collapsed .section-content {
+      display: none;
+    }
+    .section-card.collapsed .collapse-icon {
+      transform: rotate(-90deg);
     }
 
     .section-content { padding: 1rem; }
@@ -343,6 +361,13 @@
       }
     }
 
+    // ── Section collapse ──────────────────────────────────────
+
+    function toggleSection(key) {
+      const card = document.getElementById('card-' + key);
+      if (card) card.classList.toggle('collapsed');
+    }
+
     // ── Render ────────────────────────────────────────────────
 
     function h(text) {
@@ -354,10 +379,10 @@
 
     function renderSection(title, icon, key, renderItem, emptyMsg) {
       return `
-        <div class="section-card">
-          <div class="section-header">
-            <h3><span>${icon}</span> ${title}</h3>
-            <button class="btn btn-outline" onclick="openModal('${key}', null)">+ Add</button>
+        <div class="section-card" id="card-${key}">
+          <div class="section-header" onclick="toggleSection('${key}')">
+            <h3><span>${icon}</span> ${title} <i class="fas fa-chevron-down collapse-icon" aria-hidden="true"></i></h3>
+            <button class="btn btn-outline" onclick="openModal('${key}', null); event.stopPropagation();">+ Add</button>
           </div>
           <div class="section-content">
             ${appData[key].length
