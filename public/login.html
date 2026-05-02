@@ -155,12 +155,19 @@
       const token = localStorage.getItem('jic_session');
       if (!token) return;
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const r = await fetch('/api/auth/me', {
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: { 'Authorization': `Bearer ${token}` },
+          signal: controller.signal
         });
+        clearTimeout(timeout);
         if (r.ok) { window.location.replace('index.html'); }
         else { localStorage.removeItem('jic_session'); }
-      } catch (e) { /* network error — stay on login page */ }
+      } catch (e) {
+        // network error or timeout — stay on login page, remove stale token
+        localStorage.removeItem('jic_session');
+      }
     })();
 
     document.getElementById('login-form').addEventListener('submit', async (e) => {
