@@ -1,6 +1,6 @@
 # Just In Case — Architecture & Developer Guide
 
-A private emergency information PWA for two users (the family). Stores critical financial and insurance data in a dark-themed mobile-first interface.
+A private emergency information PWA for two users. Stores critical financial and insurance data in a dark-themed mobile-first interface.
 
 ---
 
@@ -49,8 +49,8 @@ just-in-case/
 
 ### Overview
 
-- **Only two users are allowed**: `***@***` and `***@***`
-- These are hardcoded in `ALLOWED_EMAILS` at the top of `worker.js` — no account creation is possible
+- **Only two users are allowed.** The list is configured via the `ALLOWED_EMAILS` Wrangler secret (comma-separated emails). Out-of-scope emails are rejected before reaching the password check.
+- No account creation endpoint exists — users are added by updating the secret and redeploying.
 - Passwords are stored in D1 hashed with **PBKDF2-SHA256** (100,000 iterations, random 16-byte salt)
 - Sessions use 32-byte random tokens stored in D1, expiring after **30 days**
 - The session token is stored in `localStorage` under key `jic_session`

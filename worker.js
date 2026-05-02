@@ -1,4 +1,14 @@
-const ALLOWED_EMAILS = ['***@***', '***@***'];
+// Allowed login emails come from the ALLOWED_EMAILS secret (comma-separated).
+// Set with: wrangler secret put ALLOWED_EMAILS
+function getAllowedEmails(env) {
+  return String(env.ALLOWED_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_FAIL_WINDOW_SECS = 15 * 60;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,16 +53,28 @@ async function handleLogin(request, env) {
     if (!email || !password) return jsonRes({ error: 'Email and password are required' }, 400);
 
     const norm = email.toLowerCase().trim();
-    if (!ALLOWED_EMAILS.includes(norm)) return jsonRes({ error: 'Invalid email or password' }, 401);
+    if (!getAllowedEmails(env).includes(norm)) {
+      return jsonRes({ error: 'Invalid email or password' }, 401);
+    }
+
+    // Rate-limit failed attempts per allowlisted email — generic error to avoid
+    // letting an attacker distinguish "rate limited" from "wrong password".
+    if (await isLoginLocked(env, norm)) {
+      return jsonRes({ error: 'Invalid email or password' }, 401);
+    }
 
     const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(norm).first();
     if (!user || !user.password_hash) {
+      await recordLoginAttempt(env, norm, false);
       return jsonRes({ error: 'No password set for this account. Use "Forgot Password" to set one.' }, 401);
     }
 
     if (!(await verifyPassword(password, user.password_hash))) {
+      await recordLoginAttempt(env, norm, false);
       return jsonRes({ error: 'Invalid email or password' }, 401);
     }
+
+    await recordLoginAttempt(env, norm, true);
 
     const token = await genToken();
     const exp = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // 30 days
@@ -63,6 +85,29 @@ async function handleLogin(request, env) {
   } catch (e) {
     console.error('login error:', e);
     return jsonRes({ error: 'Login failed' }, 500);
+  }
+}
+
+async function isLoginLocked(env, email) {
+  try {
+    const cutoff = Math.floor(Date.now() / 1000) - LOGIN_FAIL_WINDOW_SECS;
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM login_attempts WHERE email = ? AND ts > ? AND success = 0'
+    ).bind(email, cutoff).first();
+    return row && Number(row.n) >= LOGIN_FAIL_LIMIT;
+  } catch (e) {
+    console.error('login lock check failed:', e);
+    return false; // fail open on DB hiccup
+  }
+}
+
+async function recordLoginAttempt(env, email, success) {
+  try {
+    await env.DB.prepare(
+      'INSERT INTO login_attempts (email, ts, success) VALUES (?, ?, ?)'
+    ).bind(email, Math.floor(Date.now() / 1000), success ? 1 : 0).run();
+  } catch (e) {
+    console.error('login_attempts insert failed:', e);
   }
 }
 
@@ -94,7 +139,7 @@ async function handleResetRequest(request, env) {
     const norm = email.toLowerCase().trim();
     // Always return the same message to prevent email enumeration
     const ok = { success: true, message: 'If that address is registered, a reset link is on its way.' };
-    if (!ALLOWED_EMAILS.includes(norm)) return jsonRes(ok);
+    if (!getAllowedEmails(env).includes(norm)) return jsonRes(ok);
 
     // Replace any existing token for this email
     await env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(norm).run();
@@ -296,8 +341,20 @@ async function ensureAuthTables(env) {
     expires_at INTEGER NOT NULL
   )`).run();
 
-  await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind('***@***').run();
-  await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind('***@***').run();
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    ts INTEGER NOT NULL,
+    success INTEGER NOT NULL DEFAULT 0
+  )`).run();
+
+  await env.DB.prepare(
+    `CREATE INDEX IF NOT EXISTS login_attempts_email_ts ON login_attempts (email, ts)`
+  ).run();
+
+  for (const email of getAllowedEmails(env)) {
+    await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind(email).run();
+  }
 }
 
 // ── Default app data ──────────────────────────────────────────
@@ -305,7 +362,7 @@ async function ensureAuthTables(env) {
 function defaultAppData() {
   return {
     firststeps: [
-      { id: 1, title: 'Contact Information', details: 'Key people to call:\n- Spouse: 555-123-4567\n- Jane: 555-987-6543\n- Attorney: 555-246-8101', notes: 'Call first if something happens' },
+      { id: 1, title: 'Contact Information', details: 'Key people to call:\n- Spouse: 555-123-4567\n- Family: 555-987-6543\n- Attorney: 555-246-8101', notes: 'Call first if something happens' },
       { id: 2, title: 'Will & Estate', details: 'Location of documents:\n- Will: Filed with attorney John Smith\n- Trust: Stored in safe deposit box #123\n- Power of Attorney: Same location', notes: 'Provide death certificate copies' },
       { id: 3, title: 'Digital Assets', details: 'What to do with online accounts:\n- Social Media: Facebook memorial, Twitter deleted\n- Email: Forward to Jane for 6 months\n- Cloud Storage: Google Drive shared with Jane', notes: 'Delete unused accounts after 1 year' },
       { id: 4, title: 'Debts & Obligations', details: 'What needs to be paid:\n- Mortgage: 6AL Property - $2,500/mo\n- Credit Cards: Close all, pay off balances\n- Car Loans: 2 vehicles - 95EB and 446BB', notes: 'Contact banks immediately' },

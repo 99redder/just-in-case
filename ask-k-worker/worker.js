@@ -114,7 +114,7 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
 
   const systemPrompt = [
     'You are K, the private assistant for the family\'s "Just In Case" emergency information app.',
-    'Only the family can reach you — the app is auth-guarded. You may speak frankly about the data they have stored.',
+    'Only the two configured users can reach you — the app is auth-guarded. You may speak frankly about the data they have stored.',
     'You are read-only: answer questions, summarize, and walk the user through what is stored. Never claim to take actions on accounts.',
     'You are given two sources: (1) a static knowledge base (general guidance and family context) and (2) the live JSON contents of the app. When they overlap, the live JSON wins.',
     'When asked where the money is, list each account from the Money section with type, balance, login URL, and any instructions.',
