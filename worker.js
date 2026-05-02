@@ -69,6 +69,13 @@ export default {
       if (request.method === 'GET')  return handleGetData(request, env);
       if (request.method === 'POST') return handleSaveData(request, env);
     }
+    if (path === '/api/knowledge-base' || path === '/api/knowledge-base/entries') {
+      const session = await validateSession(request, env);
+      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
+      if (request.method === 'GET')    return handleGetKnowledgeBase(request, env);
+      if (request.method === 'POST')   return handleSaveKnowledgeBase(request, env);
+      if (request.method === 'DELETE') return handleDeleteKnowledgeEntry(request, env);
+    }
 
     // Static assets — serve from assets but inject security headers
     if (request.method === 'GET' || request.method === 'HEAD') {
@@ -575,4 +582,66 @@ function defaultAppData() {
       { id: 8, text: 'Check LLC compliance requirements', completed: false }
     ],
   };
+}
+
+// ── Knowledge Base handlers ───────────────────────────────────
+async function handleGetKnowledgeBase(request, env) {
+  try {
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS knowledge_base (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`).run();
+
+    const rows = await env.DB.prepare(
+      'SELECT id, ts, content, updated_at FROM knowledge_base ORDER BY id ASC'
+    ).all();
+    return jsonRes({ ok: true, entries: rows.results || [] });
+  } catch (e) {
+    console.error('get knowledge base error:', e);
+    return jsonRes({ error: 'Failed to load knowledge base' }, 500);
+  }
+}
+
+async function handleSaveKnowledgeBase(request, env) {
+  try {
+    const { entries } = await request.json();
+    if (!Array.isArray(entries)) return jsonRes({ error: 'entries must be an array' }, 400);
+
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS knowledge_base (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`).run();
+
+    // Replace all entries in a transaction
+    await env.DB.prepare('DELETE FROM knowledge_base').run();
+    const now = Math.floor(Date.now() / 1000);
+    for (const entry of entries) {
+      const content = String(entry.content || '').trim();
+      if (!content) continue;
+      await env.DB.prepare(
+        'INSERT INTO knowledge_base (ts, content, updated_at) VALUES (?, ?, ?)'
+      ).bind(now, content, now).run();
+    }
+    return jsonRes({ ok: true });
+  } catch (e) {
+    console.error('save knowledge base error:', e);
+    return jsonRes({ error: 'Failed to save knowledge base' }, 500);
+  }
+}
+
+async function handleDeleteKnowledgeEntry(request, env) {
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get('id');
+    if (!id) return jsonRes({ error: 'Missing id' }, 400);
+    await env.DB.prepare('DELETE FROM knowledge_base WHERE id = ?').bind(Number(id)).run();
+    return jsonRes({ ok: true });
+  } catch (e) {
+    console.error('delete knowledge entry error:', e);
+    return jsonRes({ error: 'Failed to delete entry' }, 500);
+  }
 }
