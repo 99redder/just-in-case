@@ -322,14 +322,6 @@ function defaultAppData() {
       { id: 3, account: 'Vanguard IRA', type: 'Investment', balance: '$45,678.42', loginUrl: 'https://vanguard.com', username: '99redder', instructions: 'Use LastPass for credentials' },
       { id: 4, account: 'Robinhood', type: 'Investment', balance: '$2,145.00', loginUrl: 'https://robinhood.com', username: 'chris@99redder.com', instructions: 'Biometric login enabled' },
     ],
-    passwords: [
-      { id: 1, service: 'Gmail / Google', username: 'chris@99redder.com', password: 'password123', instructions: '2FA via Authy' },
-      { id: 2, service: 'iCloud', username: 'chris@icloud.com', password: 'password123', instructions: 'Use this if phone is lost' },
-      { id: 3, service: 'GitHub', username: '99redder', password: 'password123', instructions: 'PAT for automation' },
-      { id: 4, service: 'LastPass', username: 'chris@99redder.com', password: 'password123', instructions: 'Emergency access to Spouse' },
-      { id: 5, service: 'Netflix', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
-      { id: 6, service: 'Disney+', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
-    ],
     checklist: [
       { id: 1, text: 'Review emergency contacts', completed: false },
       { id: 2, text: 'Update will and estate documents', completed: true },

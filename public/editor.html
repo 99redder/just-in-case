@@ -174,15 +174,6 @@
       font-size: 0.78rem;
     }
 
-    .password-mask {
-      font-family: "Courier New", monospace;
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      cursor: pointer;
-      user-select: none;
-    }
-    .password-mask.revealed { color: var(--warning); }
-
     .empty-state {
       padding: 1.5rem 1rem;
       text-align: center;
@@ -333,7 +324,7 @@
   </div>
 
   <script>
-    let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
+    let appData = { firststeps: [], insurance: [], money: [], checklist: [] };
 
     // ── Data I/O ──────────────────────────────────────────────
 
@@ -431,22 +422,6 @@
           </div>
         </div>`, 'No accounts yet.');
 
-      const passwordsHtml = renderSection('Passwords', '🔑', 'passwords', item => `
-        <div class="data-item">
-          <div class="data-item-title">🔒 ${h(item.service)}</div>
-          <div class="data-item-meta">Username: ${h(item.username)}</div>
-          <div class="data-item-meta" style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
-            Password:
-            <span class="password-mask" data-pw="${h(item.password)}" onclick="togglePw(this)">••••••••••</span>
-            <button class="btn btn-outline" style="padding:0.2rem 0.5rem;font-size:0.75rem" onclick="copyText('${h(item.password)}')">Copy</button>
-          </div>
-          ${item.instructions ? `<div class="data-item-meta">Instructions: ${h(item.instructions)}</div>` : ''}
-          <div class="item-actions">
-            <button class="btn btn-outline" onclick="openModal('passwords',${item.id})">Edit</button>
-            <button class="btn btn-danger"  onclick="deleteItem('passwords',${item.id})">Delete</button>
-          </div>
-        </div>`, 'No passwords yet.');
-
       const checklistHtml = renderSection('Checklist', '📋', 'checklist', item => `
         <div class="data-item">
           <div class="data-item-title" style="${item.completed ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">
@@ -460,7 +435,7 @@
           </div>
         </div>`, 'No checklist items yet.');
 
-      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + passwordsHtml + checklistHtml;
+      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + checklistHtml;
     }
 
     // ── Modal ─────────────────────────────────────────────────
@@ -565,24 +540,6 @@
           <textarea id="f-instructions" class="form-control" style="min-height:60px">${v('instructions')}</textarea>
         </div>`;
 
-      if (section === 'passwords') return `
-        <div class="form-group">
-          <label>Service / Site</label>
-          <input id="f-service" class="form-control" type="text" value="${v('service')}" placeholder="e.g. Gmail">
-        </div>
-        <div class="form-group">
-          <label>Username / Email</label>
-          <input id="f-username" class="form-control" type="text" value="${v('username')}" placeholder="user@email.com">
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input id="f-password" class="form-control" type="text" value="${v('password')}" placeholder="Enter password">
-        </div>
-        <div class="form-group">
-          <label>Instructions / Notes</label>
-          <textarea id="f-instructions" class="form-control" style="min-height:60px">${v('instructions')}</textarea>
-        </div>`;
-
       if (section === 'checklist') return `
         <div class="form-group">
           <label>Title</label>
@@ -636,8 +593,6 @@
         item = { id: id ?? Date.now(), type: val('f-type'), name: val('f-name'), details: val('f-details'), notes: val('f-notes') };
       } else if (section === 'money') {
         item = { id: id ?? Date.now(), account: val('f-account'), type: val('f-type'), balance: val('f-balance'), username: val('f-username'), loginUrl: val('f-loginUrl'), instructions: val('f-instructions') };
-      } else if (section === 'passwords') {
-        item = { id: id ?? Date.now(), service: val('f-service'), username: val('f-username'), password: val('f-password'), instructions: val('f-instructions') };
       } else if (section === 'checklist') {
         item = { id: id ?? Date.now(), title: val('f-title'), details: val('f-details'), notes: val('f-notes'), completed: document.getElementById('f-completed')?.checked ?? false };
       }
@@ -663,7 +618,7 @@
     // ── Helpers ───────────────────────────────────────────────
 
     function sectionLabel(s) {
-      return { firststeps: 'First Step', insurance: 'Insurance Policy', money: 'Account', passwords: 'Password', checklist: 'Checklist Item' }[s] || s;
+      return { firststeps: 'First Step', insurance: 'Insurance Policy', money: 'Account', checklist: 'Checklist Item' }[s] || s;
     }
 
     function typeIcon(t) {
@@ -674,24 +629,6 @@
       return { Bank: '🏦', Investment: '📈', Retirement: '🏛️', Crypto: '🪙' }[t] || '💼';
     }
 
-    function togglePw(el) {
-      if (el.dataset.on === '1') {
-        el.textContent = '••••••••••';
-        el.dataset.on = '0';
-        el.classList.remove('revealed');
-      } else {
-        el.textContent = el.dataset.pw;
-        el.dataset.on = '1';
-        el.classList.add('revealed');
-        setTimeout(() => {
-          if (el.dataset.on === '1') {
-            el.textContent = '••••••••••';
-            el.dataset.on = '0';
-            el.classList.remove('revealed');
-          }
-        }, 10000);
-      }
-    }
 
     function copyText(text) {
       navigator.clipboard.writeText(text).then(() => showToast('Copied!', 'success'));

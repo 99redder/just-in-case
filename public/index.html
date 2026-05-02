@@ -214,43 +214,6 @@
       color: var(--text-muted);
     }
 
-    /* Passwords section specific */
-    .password-group {
-      border-bottom: 1px solid var(--surface-2);
-      padding: 0.8rem 1rem;
-    }
-
-    .password-group:last-child {
-      border-bottom: none;
-    }
-
-    .password-item {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      padding: 0.5rem 0;
-    }
-
-    .password-label {
-      flex: 1;
-      font-size: 0.88rem;
-    }
-
-    .password-display {
-      font-family: "Courier New", monospace;
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      word-break: break-all;
-      max-width: 140px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .password-display.revealed {
-      color: var(--text);
-    }
-
     /* Where We Have Money section */
     .account-card {
       background: var(--surface-2);
@@ -697,14 +660,6 @@
         { id: 3, account: 'Vanguard IRA', type: 'Investment', balance: '$45,678.42', loginUrl: 'https://vanguard.com', username: '99redder', instructions: 'Use LastPass for credentials' },
         { id: 4, account: 'Robinhood', type: 'Investment', balance: '$2,145.00', loginUrl: 'https://robinhood.com', username: 'chris@99redder.com', instructions: 'Biometric login enabled' }
       ],
-      passwords: [
-        { id: 1, service: 'Gmail / Google', username: 'chris@99redder.com', password: 'password123', instructions: '2FA via Authy' },
-        { id: 2, service: 'iCloud', username: 'chris@icloud.com', password: 'password123', instructions: 'Use this if phone is lost' },
-        { id: 3, service: 'GitHub', username: '99redder', password: 'password123', instructions: 'PAT for automation' },
-        { id: 4, service: 'LastPass', username: 'chris@99redder.com', password: 'password123', instructions: 'Emergency access to Spouse' },
-        { id: 5, service: 'Netflix', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' },
-        { id: 6, service: 'Disney+', username: 'chris@99redder.com', password: 'password123', instructions: 'Shared account' }
-      ],
       checklist: []
     };
 
@@ -752,7 +707,7 @@
 
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
-    let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
+    let appData = { firststeps: [], insurance: [], money: [], checklist: [] };
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
@@ -771,7 +726,6 @@
         firststeps: Array.isArray(data?.firststeps) ? data.firststeps : [],
         insurance: Array.isArray(data?.insurance) ? data.insurance : [],
         money: Array.isArray(data?.money) ? data.money.map(normalizeMoneyItem) : [],
-        passwords: Array.isArray(data?.passwords) ? data.passwords : [],
         checklist: Array.isArray(data?.checklist) ? data.checklist : []
       };
     }
@@ -865,27 +819,6 @@
         </div>
       `;
 
-      // Passwords Section
-      html += `
-        <div class="menu-card">
-          <div class="menu-header" onclick="toggleMenu('passwords')">
-            <h3><span class="menu-icon">🔑</span> Passwords</h3>
-            <span class="chevron">▼</span>
-          </div>
-          <div class="menu-content" id="passwords-content">
-            ${appData.passwords.length > 0 ? appData.passwords.map(item => `
-              <div class="password-group">
-                <div class="password-item">
-                  <span class="password-label">${escapeHtml(item.service)}</span>
-                  <span class="password-display" data-pw="${escapeHtml(item.password)}" onclick="togglePassword(this)">••••••••••</span>
-                  <button class="btn btn-secondary" onclick="copyField('passwords',${item.id},'password')">Copy</button>
-                </div>
-              </div>
-            `).join('') : '<div class="empty-state">No passwords added yet.</div>'}
-          </div>
-        </div>
-      `;
-
       // Checklist Section
       html += `
         <div class="menu-card">
@@ -930,26 +863,6 @@
           body: JSON.stringify(appData),
         });
       } catch (e) { /* ignore */ }
-    }
-
-    // Password reveal — reads actual value from data-pw attribute
-    function togglePassword(el) {
-      if (el.dataset.on === '1') {
-        el.textContent = '••••••••••';
-        el.dataset.on = '0';
-        el.classList.remove('revealed');
-      } else {
-        el.textContent = el.dataset.pw;
-        el.dataset.on = '1';
-        el.classList.add('revealed');
-        setTimeout(() => {
-          if (el.dataset.on === '1') {
-            el.textContent = '••••••••••';
-            el.dataset.on = '0';
-            el.classList.remove('revealed');
-          }
-        }, 5000);
-      }
     }
 
     // Convert URLs in text to clickable links (rest of text is HTML-escaped)

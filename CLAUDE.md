@@ -1,6 +1,6 @@
 # Just In Case — Architecture & Developer Guide
 
-A private emergency information PWA for two users (the family). Stores critical financial, insurance, and password data in a dark-themed mobile-first interface.
+A private emergency information PWA for two users (the family). Stores critical financial and insurance data in a dark-themed mobile-first interface.
 
 ---
 
@@ -132,7 +132,6 @@ The `<body>` tag has `style="display:none"` to prevent a flash of content before
   "firststeps": [{ "id", "title", "details", "notes" }],
   "insurance":  [{ "id", "type", "name", "details", "notes" }],
   "money":      [{ "id", "account", "type", "balance", "loginUrl", "username", "instructions" }],
-  "passwords":  [{ "id", "service", "username", "password", "instructions" }],
   "checklist":  [{ "id", "text", "completed" }]
 }
 ```
@@ -148,16 +147,12 @@ The main view is **read-only** — it fetches data and displays it but has no ed
 **Module-level `appData` store** — all data is held in a module-level variable so onclick handlers can look up values by ID rather than embedding them inline. Inline onclick attributes break on content with single quotes, newlines, or Unicode.
 
 ```javascript
-let appData = { firststeps: [], insurance: [], money: [], passwords: [], checklist: [] };
+let appData = { firststeps: [], insurance: [], money: [], checklist: [] };
 ```
 
 **`showDetails(section, id)`** — opens a bottom-sheet modal showing the full details text for a First Steps or Insurance item. URLs in the text are automatically converted to tappable hyperlinks by `linkify()`. The modal also has a Copy button.
 
 **`linkify(text)`** — scans text for `https?://` URLs, HTML-escapes everything else, and wraps each URL in an `<a target="_blank">` tag. Used inside the details modal.
-
-**`copyField(section, id, field)`** — copies a specific field value to the clipboard by looking up the item in `appData` by ID. Used for the Password Copy button.
-
-**`togglePassword(el)`** — reveals/hides a password. The actual password is stored in `data-pw` on the element (not inline in onclick). Auto-hides after 5 seconds.
 
 **`toggleChecklistItem(id)`** — flips a checklist item's `completed` boolean and re-renders the app. Note: this only persists in memory for the session; the editor must be used to save changes to D1.
 
@@ -168,7 +163,6 @@ let appData = { firststeps: [], insurance: [], money: [], passwords: [], checkli
 | First Steps | Details button → modal |
 | Insurance | Details button → modal |
 | Where We Have Money | View button → opens `loginUrl` in new tab |
-| Passwords | Click masked text to reveal/hide; Copy button |
 | Checklist | Checkboxes toggle `completed` state in memory |
 
 ---
