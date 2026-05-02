@@ -116,9 +116,15 @@ async function handleAskK(request, env, cors) {
   let liveData = null;
   try {
     const row = await env.DB.prepare('SELECT content FROM app_data LIMIT 1').first();
-    if (row?.content) liveData = await decryptData(row.content, env);
+    if (row?.content) {
+      liveData = await decryptData(row.content, env);
+    }
   } catch (e) {
     console.error('app_data fetch failed:', e);
+  }
+  // Fallback: ensure liveData always has a valid structure
+  if (!liveData || typeof liveData !== 'object' || Array.isArray(liveData)) {
+    liveData = { firststeps: [], insurance: [], money: [], checklist: [] };
   }
 
   try {
@@ -145,6 +151,7 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
     'Only the two configured users can reach you — the app is auth-guarded. You may speak frankly about the data they have stored.',
     'You are read-only: answer questions, summarize, and walk the user through what is stored. Never claim to take actions on accounts.',
     'You are given two sources: (1) a static knowledge base (general guidance and family context) and (2) the live JSON contents of the app. When they overlap, the live JSON wins.',
+    'You also receive a `populatedSections` string listing which sections have data (e.g. "First Steps: 4 items, Insurance: 3 items, Money: 2 items, Checklist: 1 item"). Use this to know what is available before looking at raw JSON.',
     'When asked where the money is, list each account from the Money section with type, balance, login URL, and any instructions.',
     'IMPORTANT: account numbers and login usernames are intentionally redacted from the data you can see. Where you see a value like "[in app: Money → <account>]", that means the real identifier exists in the app but has been hidden from you for privacy. In that case, do NOT make up a number. Tell the user exactly where to find it: "Open the Money section, tap <account name>; the account number is in the Username field."',
     'When asked how to pay something or what to do first, walk through the relevant First Steps entry.',
@@ -164,12 +171,26 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
 
   const dynamicKB = await getDynamicKnowledgeBase(env);
 
+  // Summarize what sections exist in liveAppData so K knows what's populated
+  const populatedSections = liveData
+    ? Object.entries({
+        'First Steps': liveData.firststeps,
+        'Insurance': liveData.insurance,
+        'Money': liveData.money,
+        'Checklist': liveData.checklist,
+      }).map(([section, items]) => {
+        const count = Array.isArray(items) ? items.length : 0;
+        return `${section}: ${count} item${count !== 1 ? 's' : ''}`;
+      }).filter(s => s.includes(': 0 items') === false)
+    : [];
+
   const userPayload = {
     user: userEmail,
     question,
     history: trimmedHistory,
     knowledgeBase: clip(dynamicKB, 8000),
     liveAppData: redactForLLM(liveData),
+    populatedSections: populatedSections.length > 0 ? populatedSections.join(', ') : 'No sections have been populated yet.',
   };
 
   const response = await fetch(baseUrl, {
