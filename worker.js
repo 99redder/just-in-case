@@ -160,12 +160,8 @@ async function handleLogin(request, env) {
     const token = await genToken();
     const exp = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // 30 days
 
-    // #4: Bind session to user-agent fingerprint
-    const ua = request.headers.get('User-Agent') || '';
-    const uaHash = await sha256(ua);
-
-    await env.DB.prepare('INSERT INTO sessions (token, email, expires_at, ua_hash) VALUES (?, ?, ?, ?)')
-      .bind(token, norm, exp, uaHash).run();
+    await env.DB.prepare('INSERT INTO sessions (token, email, expires_at) VALUES (?, ?, ?)')
+      .bind(token, norm, exp).run();
 
     return jsonRes({ token, email: norm });
   } catch (e) {
@@ -435,24 +431,13 @@ async function validateSession(request, env) {
   if (!token) return null;
   const now = Math.floor(Date.now() / 1000);
 
-  // #4: Check UA hash binding
-  const ua = request.headers.get('User-Agent') || '';
-  const uaHash = await sha256(ua);
-
-  const session = await env.DB.prepare(
+  // UA-hash binding was tried and removed: iOS sends subtly different
+  // User-Agent strings between Safari and PWA mode, which silently nuked the
+  // session every time the user switched contexts. The token itself is a
+  // 32-byte random secret in a Bearer header — that's the auth, not the UA.
+  return await env.DB.prepare(
     'SELECT * FROM sessions WHERE token = ? AND expires_at > ?'
-  ).bind(token, now).first();
-
-  if (!session) return null;
-
-  // If UA hash is stored, verify it matches
-  if (session.ua_hash && session.ua_hash !== uaHash) {
-    // UA mismatch — invalidate session and require re-login
-    await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
-    return null;
-  }
-
-  return session;
+  ).bind(token, now).first() || null;
 }
 
 async function hashPassword(password, salt) {
