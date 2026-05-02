@@ -45,6 +45,50 @@ just-in-case/
 
 ---
 
+## Data-at-rest encryption (turn it on)
+
+Both workers support AES-256-GCM encryption of the `app_data` JSON. The code
+path is wired in `worker.js` (`encryptData` / `decryptData`) and used by the
+ask-k-worker for grounding. While `DATA_ENCRYPTION_KEY` is empty, rows are
+stored as plaintext JSON. Once a key is set, `decryptData` recognises both
+the encrypted format (`iv:ciphertext`, both base64) and legacy plaintext, so
+reading existing rows still works during the migration window.
+
+To enable encryption:
+
+```bash
+# 1. Generate a 64-char hex key and store it somewhere safe (1Password, etc.)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# 2. Set it as a secret on BOTH workers (they share the D1)
+echo "<key>" | wrangler secret put DATA_ENCRYPTION_KEY                 # main worker
+cd ask-k-worker && echo "<key>" | wrangler secret put DATA_ENCRYPTION_KEY
+
+# 3. Open the editor and save anything once. The save round-trips the
+#    plaintext row through encryptData and writes ciphertext.
+```
+
+If the key is ever lost, ciphertext rows are unrecoverable. Back it up.
+
+## Log retention
+
+A daily Cloudflare cron (`0 9 * * *` UTC, ~04:00 ET) runs `runRetentionSweep`
+in `worker.js` to drop old rows from the three log tables in `just-in-case-db`:
+
+| Table | Window | Why |
+|-------|--------|-----|
+| `askk_log` | 90 days | Audit trail for K conversations |
+| `login_attempts` | 30 days | Audit + supports 15-min rate limit |
+| `save_log` | 1 day | Only used for the per-minute save rate limit |
+
+To inspect the audit trail:
+
+```bash
+wrangler d1 execute just-in-case-db --remote --command "SELECT ts, email, substr(question,1,80) AS q, status FROM askk_log ORDER BY ts DESC LIMIT 20"
+```
+
+---
+
 ## Gotchas (don't repeat)
 
 These bit us already; the comments in code say so but it's worth stating up

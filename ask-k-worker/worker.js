@@ -128,7 +128,8 @@ async function handleAskK(request, env, cors) {
   }
 
   try {
-    const reply = await generateAnswer(env, question, history, liveData, session.email);
+    const rawReply = await generateAnswer(env, question, history, liveData, session.email);
+    const reply = scrubReply(rawReply);
     await logAskK(env, session.email, question, reply, null, 200);
     return jsonRes({ ok: true, reply }, 200, cors);
   } catch (e) {
@@ -137,6 +138,25 @@ async function handleAskK(request, env, cors) {
     await logAskK(env, session.email, question, null, msg, 502);
     return jsonRes({ ok: false, error: msg }, 502, cors);
   }
+}
+
+// Defense-in-depth output filter: regex-strip patterns that look like
+// credit-card numbers, SSNs, long account/control IDs, or Treasury Direct
+// account strings before returning the model's reply (and before logging it).
+// The system prompt + redaction already prevent most of these from being
+// generated, but this is the last line of defense if the model ignores them.
+function scrubReply(text) {
+  if (typeof text !== 'string' || !text) return text;
+  const REDACTED = '[redacted]';
+  return text
+    // Credit-card-like: 13–19 digits, optional spaces or dashes between groups
+    .replace(/\b(?:\d[ -]?){13,19}\b/g, REDACTED)
+    // SSN: 3-2-4 dashed
+    .replace(/\b\d{3}-\d{2}-\d{4}\b/g, REDACTED)
+    // TreasuryDirect-style account: A-NNN-NNN-NNN (any leading uppercase letter)
+    .replace(/\b[A-Z]-\d{3}-\d{3}-\d{3}\b/g, REDACTED)
+    // 9+ contiguous digits — covers SSN-without-dashes, big account numbers
+    .replace(/\b\d{9,}\b/g, REDACTED);
 }
 
 async function generateAnswer(env, question, history, liveData, userEmail) {
@@ -315,21 +335,32 @@ async function logAskK(env, email, question, reply, error, status) {
 
 async function decryptData(encryptedStr, env) {
   const keyHex = env.DATA_ENCRYPTION_KEY;
-  if (!keyHex) {
+
+  // Detect our encrypted format: exactly two base64 parts separated by ':'.
+  // Anything else (including legacy plaintext JSON) falls through so a freshly
+  // turned-on encryption key doesn't black-hole the existing row before the
+  // user has had a chance to save once and re-encrypt it.
+  const looksEncrypted = typeof encryptedStr === 'string'
+    && /^[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(encryptedStr);
+
+  if (!looksEncrypted) {
     try { return JSON.parse(encryptedStr); } catch { return {}; }
   }
+  if (!keyHex) {
+    // Encrypted in DB but no key configured — can't decrypt.
+    return {};
+  }
+
   try {
     const keyBytes = hexToBytes(keyHex);
     const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-    const parts = encryptedStr.split(':');
-    if (parts.length !== 2) return {};
-    const iv = b64ToUint8(parts[0]);
-    const ciphertext = b64ToUint8(parts[1]);
+    const [ivPart, ctPart] = encryptedStr.split(':');
+    const iv = b64ToUint8(ivPart);
+    const ciphertext = b64ToUint8(ctPart);
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     return JSON.parse(new TextDecoder().decode(decrypted));
   } catch {
-    // Decryption failed — return plaintext (migration case)
-    try { return JSON.parse(encryptedStr); } catch { return {}; }
+    return {};
   }
 }
 

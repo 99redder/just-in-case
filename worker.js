@@ -97,7 +97,33 @@ export default {
 
     return new Response('Not Found', { status: 404, headers: combinedHeaders() });
   },
+
+  // Daily log retention sweep, fired by the cron in wrangler.toml.
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runRetentionSweep(env));
+  },
 };
+
+// Drop old rows from the three log tables. Retention windows:
+//   askk_log         — 90 days (audit trail)
+//   login_attempts   — 30 days (audit + rate limit)
+//   save_log         —  1 day  (only used for the per-minute rate limit)
+async function runRetentionSweep(env) {
+  const now = Math.floor(Date.now() / 1000);
+  const day = 24 * 3600;
+  const sweeps = [
+    ['askk_log',       now - 90 * day],
+    ['login_attempts', now - 30 * day],
+    ['save_log',       now -  1 * day],
+  ];
+  for (const [table, cutoff] of sweeps) {
+    try {
+      await env.DB.prepare(`DELETE FROM ${table} WHERE ts < ?`).bind(cutoff).run();
+    } catch (e) {
+      console.error(`retention sweep failed for ${table}:`, e);
+    }
+  }
+}
 
 // ── Auth handlers ─────────────────────────────────────────────
 
@@ -343,16 +369,27 @@ async function encryptData(data, env) {
 
 async function decryptData(encryptedStr, env) {
   const keyHex = env.DATA_ENCRYPTION_KEY;
-  if (!keyHex) {
-    // No key — return plaintext (first load or key not set)
+
+  // Detect our encrypted format: exactly two base64 parts separated by ':'.
+  // Anything else (including legacy plaintext JSON) falls through so a freshly
+  // turned-on encryption key doesn't black-hole the existing row before the
+  // user has had a chance to save once and re-encrypt it.
+  const looksEncrypted = typeof encryptedStr === 'string'
+    && /^[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/.test(encryptedStr);
+
+  if (!looksEncrypted) {
     try { return JSON.parse(encryptedStr); } catch { return {}; }
   }
+  if (!keyHex) {
+    // Encrypted in DB but no key configured — can't decrypt.
+    return {};
+  }
+
   const keyBytes = hexToBytes(keyHex);
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
-  const parts = encryptedStr.split(':');
-  if (parts.length !== 2) return {};
-  const iv = b64ToUint8(parts[0]);
-  const ciphertext = b64ToUint8(parts[1]);
+  const [ivPart, ctPart] = encryptedStr.split(':');
+  const iv = b64ToUint8(ivPart);
+  const ciphertext = b64ToUint8(ctPart);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
   return JSON.parse(new TextDecoder().decode(decrypted));
 }

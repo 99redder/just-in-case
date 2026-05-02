@@ -25,3 +25,8 @@ DATA_ENCRYPTION_KEY = ""
 binding       = "DB"
 database_name = "just-in-case-db"
 database_id   = "f75d17ed-9561-4a98-ba7c-5f786f178895"
+
+# Daily log retention sweep at 09:00 UTC (~04:00 ET). Drops old rows from
+# askk_log, save_log, and login_attempts so the tables don't grow forever.
+[triggers]
+crons = ["0 9 * * *"]
