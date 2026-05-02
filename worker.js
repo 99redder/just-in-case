@@ -78,10 +78,20 @@ export default {
     }
 
     // Static assets — serve from assets binding, then inject security headers.
-    // Root rewrites to /index.html since html_handling = "none" disables the
-    // implicit root → index mapping. Otherwise paths are served literally.
+    // html_handling = "none" disables Cloudflare's implicit /foo → /foo.html
+    // mapping, so we rewrite the known bare page names ourselves. Otherwise
+    // paths are served literally.
     if (request.method === 'GET' || request.method === 'HEAD') {
-      const fetchUrl = path === '/' ? new URL('/index.html', request.url) : new URL(request.url);
+      const PAGE_REWRITES = {
+        '/':       '/index.html',
+        '/editor': '/editor.html',
+        '/login':  '/login.html',
+        '/reset':  '/reset.html',
+      };
+      const resolvedPath = PAGE_REWRITES[path] || path;
+      const fetchUrl = resolvedPath === path
+        ? new URL(request.url)
+        : new URL(resolvedPath, request.url);
       const assetReq = new Request(fetchUrl, request);
       const asset = await env.ASSETS.fetch(assetReq);
       const headers = new Headers(asset.headers);
