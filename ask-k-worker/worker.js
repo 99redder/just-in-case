@@ -3,6 +3,7 @@ import KNOWLEDGE_BASE from './knowledge.md';
 // Load dynamic KB entries from D1 and merge with static knowledge.md
 async function getDynamicKnowledgeBase(env) {
   try {
+    await ensureAskKTables(env); // ensures knowledge_base table exists too
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS knowledge_base (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       ts INTEGER NOT NULL,
