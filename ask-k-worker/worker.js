@@ -1,5 +1,32 @@
 import KNOWLEDGE_BASE from './knowledge.md';
 
+// Load dynamic KB entries from D1 and merge with static knowledge.md
+async function getDynamicKnowledgeBase(env) {
+  try {
+    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS knowledge_base (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`).run();
+
+    const rows = await env.DB.prepare(
+      'SELECT content FROM knowledge_base ORDER BY id ASC'
+    ).all();
+    if (!rows.results || rows.results.length === 0) return KNOWLEDGE_BASE;
+    const dynamicEntries = rows.results
+      .map(r => String(r.content || '').trim())
+      .filter(Boolean)
+      .join('\n\n');
+    return dynamicEntries
+      ? `${KNOWLEDGE_BASE}\n\n## Dynamic Knowledge Base (D1)\n\n${dynamicEntries}`
+      : KNOWLEDGE_BASE;
+  } catch (e) {
+    console.error('dynamic KB load failed, using static only:', e);
+    return KNOWLEDGE_BASE;
+  }
+}
+
 const ALLOWED_ORIGINS = [
   'https://just-in-case.99redder.workers.dev',
   'http://localhost:8787',
@@ -134,11 +161,13 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
     .map((m) => ({ role: m.role, content: String(m.content || '').slice(0, 1500) }))
     .slice(-10);
 
+  const dynamicKB = await getDynamicKnowledgeBase(env);
+
   const userPayload = {
     user: userEmail,
     question,
     history: trimmedHistory,
-    knowledgeBase: clip(KNOWLEDGE_BASE, 8000),
+    knowledgeBase: clip(dynamicKB, 8000),
     liveAppData: redactForLLM(liveData),
   };
 
