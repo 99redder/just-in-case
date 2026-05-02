@@ -10,11 +10,11 @@ globs = ["**/*.md"]
 fallthrough = true
 
 [vars]
-# OpenAI-compatible chat completions endpoint. MiniMax exposes one at
-# https://api.minimaxi.com/v1 — override here if a different region/host is
-# needed. The worker appends "/chat/completions" automatically.
-ASKK_BASE_URL = "https://api.minimaxi.com/v1"
-ASKK_MODEL    = "MiniMax-Text-01"
+# OpenAI-compatible chat completions endpoint. MiniMax international hosts it
+# at https://api.minimax.io/v1 (NOT minimaxi.com). The worker appends
+# "/chat/completions" automatically.
+ASKK_BASE_URL = "https://api.minimax.io/v1"
+ASKK_MODEL    = "MiniMax-M2.5"
 
 # Shared D1 database with the main just-in-case worker. K reads `app_data` for
 # grounding and validates `jic_session` tokens against `sessions`.

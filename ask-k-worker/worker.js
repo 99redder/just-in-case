@@ -1,41 +1,74 @@
 import KNOWLEDGE_BASE from './knowledge.md';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const ALLOWED_ORIGINS = [
+  'https://just-in-case.99redder.workers.dev',
+  'http://localhost:8787',
+  'http://127.0.0.1:8787',
+];
+
+const RATE_LIMIT_PER_DAY = 100;
+
+function buildCorsHeaders(request) {
+  const origin = request.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+}
 
 export default {
   async fetch(request, env) {
+    const cors = buildCorsHeaders(request);
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: cors });
     }
 
     const url = new URL(request.url);
     if (url.pathname === '/api/ask-k' && request.method === 'POST') {
-      return handleAskK(request, env);
+      return handleAskK(request, env, cors);
     }
-    return new Response('Not Found', { status: 404, headers: corsHeaders });
+    return new Response('Not Found', { status: 404, headers: cors });
   },
 };
 
-async function handleAskK(request, env) {
+async function handleAskK(request, env, cors) {
   const session = await validateSession(request, env);
-  if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
+  if (!session) return jsonRes({ error: 'Unauthorized' }, 401, cors);
+
+  await ensureAskKTables(env);
+
+  // Per-user rolling-24h rate limit.
+  try {
+    const cutoff = Math.floor(Date.now() / 1000) - 24 * 3600;
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM askk_log WHERE email = ? AND ts > ?'
+    ).bind(session.email, cutoff).first();
+    if (row && Number(row.n) >= RATE_LIMIT_PER_DAY) {
+      return jsonRes({
+        ok: false,
+        error: `Daily limit reached (${RATE_LIMIT_PER_DAY} questions per 24h). Try again later.`,
+      }, 429, cors);
+    }
+  } catch (e) {
+    console.error('rate-limit check failed:', e);
+    // Fail open — don't block legit users on a DB hiccup.
+  }
 
   let body;
   try {
     body = await request.json();
   } catch {
-    return jsonRes({ error: 'Invalid JSON' }, 400);
+    return jsonRes({ error: 'Invalid JSON' }, 400, cors);
   }
 
   const question = String(body.message || '').trim();
   const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
-  if (!question) return jsonRes({ error: 'Missing message' }, 400);
+  if (!question) return jsonRes({ error: 'Missing message' }, 400, cors);
   if (question.length > 1000) {
-    return jsonRes({ error: 'Message too long. Keep it under 1000 characters.' }, 400);
+    return jsonRes({ error: 'Message too long. Keep it under 1000 characters.' }, 400, cors);
   }
 
   // Block obvious prompt-injection patterns before they hit the model.
@@ -47,10 +80,9 @@ async function handleAskK(request, env) {
     'ignore the above', 'ignore everything above',
   ];
   if (injectionPatterns.some((p) => lower.includes(p))) {
-    return jsonRes({
-      ok: true,
-      reply: "I'm here to help you find information stored in the Just In Case app. What would you like to know?",
-    });
+    const reply = "I'm here to help you find information stored in the Just In Case app. What would you like to know?";
+    await logAskK(env, session.email, question, reply, null, 200);
+    return jsonRes({ ok: true, reply }, 200, cors);
   }
 
   let liveData = null;
@@ -63,10 +95,13 @@ async function handleAskK(request, env) {
 
   try {
     const reply = await generateAnswer(env, question, history, liveData, session.email);
-    return jsonRes({ ok: true, reply });
+    await logAskK(env, session.email, question, reply, null, 200);
+    return jsonRes({ ok: true, reply }, 200, cors);
   } catch (e) {
     console.error('ask-k error:', e);
-    return jsonRes({ ok: false, error: e?.message || 'Assistant temporarily unavailable' }, 502);
+    const msg = e?.message || 'Assistant temporarily unavailable';
+    await logAskK(env, session.email, question, null, msg, 502);
+    return jsonRes({ ok: false, error: msg }, 502, cors);
   }
 }
 
@@ -170,9 +205,41 @@ async function validateSession(request, env) {
   }
 }
 
-function jsonRes(data, status = 200) {
+async function ensureAskKTables(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS askk_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    email TEXT NOT NULL,
+    question TEXT,
+    reply TEXT,
+    error TEXT,
+    status INTEGER
+  )`).run();
+  await env.DB.prepare(
+    'CREATE INDEX IF NOT EXISTS askk_log_email_ts ON askk_log (email, ts)'
+  ).run();
+}
+
+async function logAskK(env, email, question, reply, error, status) {
+  try {
+    await env.DB.prepare(
+      'INSERT INTO askk_log (ts, email, question, reply, error, status) VALUES (?, ?, ?, ?, ?, ?)'
+    ).bind(
+      Math.floor(Date.now() / 1000),
+      email,
+      clip(question, 1500),
+      reply ? clip(reply, 4000) : null,
+      error ? clip(error, 500) : null,
+      status
+    ).run();
+  } catch (e) {
+    console.error('askk_log insert failed:', e);
+  }
+}
+
+function jsonRes(data, status = 200, cors = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', ...cors },
   });
 }
