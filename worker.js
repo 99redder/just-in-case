@@ -78,9 +78,12 @@ export default {
     }
 
     // Static assets — serve from assets binding, then inject security headers.
-    // No SPA fallback: this is a multi-page app, every page has its own URL.
+    // Root rewrites to /index.html since html_handling = "none" disables the
+    // implicit root → index mapping. Otherwise paths are served literally.
     if (request.method === 'GET' || request.method === 'HEAD') {
-      const asset = await env.ASSETS.fetch(request);
+      const fetchUrl = path === '/' ? new URL('/index.html', request.url) : new URL(request.url);
+      const assetReq = new Request(fetchUrl, request);
+      const asset = await env.ASSETS.fetch(assetReq);
       const headers = new Headers(asset.headers);
       for (const [key, value] of Object.entries(pageHeaders())) {
         headers.set(key, value);
