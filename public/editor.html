@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#0f172a">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Just In Case — Editor</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛡️</text></svg>">
@@ -381,6 +382,7 @@
     }
 
     function renderSection(title, icon, key, renderItem, emptyMsg) {
+      const items = Array.isArray(appData[key]) ? appData[key] : [];
       return `
         <div class="section-card" id="card-${key}">
           <div class="section-header" onclick="toggleSection('${key}')">
@@ -388,8 +390,8 @@
             <button class="btn btn-outline" onclick="openModal('${key}', null); event.stopPropagation();">+ Add</button>
           </div>
           <div class="section-content">
-            ${appData[key].length
-              ? appData[key].map(renderItem).join('')
+            ${items.length
+              ? items.map(renderItem).join('')
               : `<div class="empty-state">${emptyMsg}</div>`}
           </div>
         </div>`;
@@ -755,7 +757,14 @@
       } catch (e) { /* network error — allow through */ }
 
       try {
-        appData = await loadData();
+        const loaded = await loadData();
+        appData = {
+          firststeps: Array.isArray(loaded?.firststeps) ? loaded.firststeps : [],
+          insurance:  Array.isArray(loaded?.insurance)  ? loaded.insurance  : [],
+          money:      Array.isArray(loaded?.money)      ? loaded.money      : [],
+          checklist:  Array.isArray(loaded?.checklist)  ? loaded.checklist  : [],
+          generalinfo: Array.isArray(loaded?.generalinfo) ? loaded.generalinfo : [],
+        };
         if (fixDuplicateIds(appData)) await saveData();
       } catch (e) { /* use empty defaults */ }
 

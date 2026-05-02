@@ -1,6 +1,6 @@
 // Increment this version string whenever you deploy new code.
 // The browser detects the change, installs the new SW, and clears old caches.
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const CACHE   = `jic-${VERSION}`;
 
 // Activate immediately — don't wait for old tabs to close
@@ -22,6 +22,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
+  // Cache API only supports http(s); skip browser/extension schemes
+  // (chrome-extension://, moz-extension://, data:, etc.) so wallet
+  // extensions don't trigger an unhandled cache.put rejection.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
   // Skip API calls entirely — let them go straight to the network
   if (url.pathname.startsWith('/api/')) return;
 
@@ -30,7 +35,7 @@ self.addEventListener('fetch', event => {
       .then(response => {
         // Cache a fresh copy for offline fallback
         const copy = response.clone();
-        caches.open(CACHE).then(cache => cache.put(event.request, copy));
+        caches.open(CACHE).then(cache => cache.put(event.request, copy)).catch(() => {});
         return response;
       })
       .catch(() => caches.match(event.request))

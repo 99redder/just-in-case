@@ -45,6 +45,31 @@ just-in-case/
 
 ---
 
+## Gotchas (don't repeat)
+
+These bit us already; the comments in code say so but it's worth stating up
+front:
+
+- **`html_handling = "none"` in `wrangler.toml` is load-bearing.** The default
+  (`auto-trailing-slash`) makes Cloudflare's assets binding 307-redirect
+  `/login.html` → `/login`. Our worker wraps every asset response, and the
+  307 used to trigger an SPA-fallback branch that served `index.html` for
+  every `.html` URL. Don't remove `html_handling = "none"` without also
+  rethinking the worker's asset wrapper.
+- **Root URL needs an explicit rewrite to `/index.html`.** A side effect of
+  `html_handling = "none"` is that `env.ASSETS.fetch("/")` returns 404 — the
+  binding no longer auto-serves `index.html` at root. The worker rewrites
+  `/` → `/index.html` before delegating to the asset binding.
+- **Schema changes need `ALTER TABLE`, not just an updated `CREATE TABLE`.**
+  `ensureAuthTables` uses `CREATE TABLE IF NOT EXISTS`, which is a no-op on
+  pre-existing tables. When `ua_hash` was added to `sessions`, every login
+  500'd until an `ALTER TABLE sessions ADD COLUMN ua_hash TEXT` was added
+  (D1 doesn't support `IF NOT EXISTS` on `ALTER`, so swallow the duplicate-
+  column error on subsequent runs). Same pattern applies to any future
+  column adds.
+
+---
+
 ## Authentication System
 
 ### Overview
