@@ -10,11 +10,43 @@ function getAllowedEmails(env) {
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_FAIL_WINDOW_SECS = 15 * 60;
 
+// ── #1: Security headers (HSTS, X-Frame-Options, CSP, no-cache, etc.) ──
+
+function securityHeaders() {
+  return {
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'X-XSS-Protection': '1; mode=block',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  };
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
+function combinedHeaders(extra = {}) {
+  return { ...securityHeaders(), ...corsHeaders, ...extra };
+}
+
+// CSP for static assets (HTML pages)
+function pageHeaders() {
+  return {
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+    'X-Frame-Options': 'DENY',
+    'X-Content-Type-Options': 'nosniff',
+    'X-XSS-Protection': '1; mode=block',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; font-src https://cdnjs.cloudflare.com; connect-src 'self'; base-uri 'self'; form-action 'self';",
+  };
+}
 
 export default {
   async fetch(request, env) {
@@ -22,17 +54,15 @@ export default {
     const path = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: combinedHeaders() });
     }
 
-    // Public auth routes
+    // API routes handled by worker
     if (path === '/api/auth/login'          && request.method === 'POST') return handleLogin(request, env);
     if (path === '/api/auth/logout'         && request.method === 'POST') return handleLogout(request, env);
     if (path === '/api/auth/me'             && request.method === 'GET')  return handleMe(request, env);
     if (path === '/api/auth/reset-request'  && request.method === 'POST') return handleResetRequest(request, env);
     if (path === '/api/auth/reset-password' && request.method === 'POST') return handleResetPassword(request, env);
-
-    // Protected data routes
     if (path.startsWith('/api/data')) {
       const session = await validateSession(request, env);
       if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
@@ -40,7 +70,34 @@ export default {
       if (request.method === 'POST') return handleSaveData(request, env);
     }
 
-    return new Response('Not Found', { status: 404 });
+    // Static assets — serve from assets but inject security headers
+    if (request.method === 'GET' || request.method === 'HEAD') {
+      const asset = await env.ASSETS.fetch(request);
+      if (asset.status === 404 || asset.status === 307) {
+        // SPA fallback: return index.html for non-file routes
+        try {
+          const indexReq = new Request(new URL('/', request.url), request);
+          const index = await env.ASSETS.fetch(indexReq);
+          if (index.ok) {
+            const headers = new Headers(index.headers);
+            for (const [key, value] of Object.entries(pageHeaders())) {
+              headers.set(key, value);
+            }
+            return new Response(index.body, { status: 200, statusText: 'OK', headers });
+          }
+        } catch(e) {
+          console.error('SPA fallback error:', e);
+        }
+      }
+      // Inject security headers into asset response
+      const headers = new Headers(asset.headers);
+      for (const [key, value] of Object.entries(pageHeaders())) {
+        headers.set(key, value);
+      }
+      return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+    }
+
+    return new Response('Not Found', { status: 404, headers: combinedHeaders() });
   },
 };
 
@@ -78,8 +135,13 @@ async function handleLogin(request, env) {
 
     const token = await genToken();
     const exp = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // 30 days
-    await env.DB.prepare('INSERT INTO sessions (token, email, expires_at) VALUES (?, ?, ?)')
-      .bind(token, norm, exp).run();
+
+    // #4: Bind session to user-agent fingerprint
+    const ua = request.headers.get('User-Agent') || '';
+    const uaHash = await sha256(ua);
+
+    await env.DB.prepare('INSERT INTO sessions (token, email, expires_at, ua_hash) VALUES (?, ?, ?, ?)')
+      .bind(token, norm, exp, uaHash).run();
 
     return jsonRes({ token, email: norm });
   } catch (e) {
@@ -196,12 +258,14 @@ async function handleGetData(request, env) {
   try {
     const data = await env.DB.prepare('SELECT * FROM app_data LIMIT 1').first();
     if (data) {
-      return new Response(data.content, {
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      // #2: Decrypt before sending to client
+      const decrypted = await decryptData(data.content, env);
+      return new Response(JSON.stringify(decrypted), {
+        headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
       });
     }
     return new Response(JSON.stringify(defaultAppData()), {
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
     });
   } catch (e) {
     console.error('get data error:', e);
@@ -211,20 +275,117 @@ async function handleGetData(request, env) {
 
 async function handleSaveData(request, env) {
   try {
+    // #5: Validate payload structure before saving
     const body = await request.json();
-    const content = JSON.stringify(body);
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return jsonRes({ error: 'Invalid payload' }, 400);
+    }
+
+    // Validate expected top-level keys
+    const allowedKeys = ['firststeps', 'insurance', 'money', 'checklist'];
+    for (const key of Object.keys(body)) {
+      if (!allowedKeys.includes(key)) {
+        return jsonRes({ error: `Unexpected key: ${key}` }, 400);
+      }
+      if (!Array.isArray(body[key])) {
+        return jsonRes({ error: `Key '${key}' must be an array` }, 400);
+      }
+    }
+
+    // #5: Enforce payload size limit (1MB)
+    const serialized = JSON.stringify(body);
+    if (serialized.length > 1024 * 1024) {
+      return jsonRes({ error: 'Payload too large (max 1MB)' }, 413);
+    }
+
+    // #5: Write rate limiting — track saves per session
+    const session = await validateSession(request, env);
+    if (session) {
+      const minuteCutoff = Math.floor(Date.now() / 1000) - 60;
+      const row = await env.DB.prepare(
+        'SELECT COUNT(*) AS n FROM save_log WHERE email = ? AND ts > ?'
+      ).bind(session.email, minuteCutoff).first();
+      if (row && Number(row.n) >= 30) {
+        return jsonRes({ error: 'Too many save requests. Slow down.' }, 429);
+      }
+      await env.DB.prepare(
+        'INSERT INTO save_log (email, ts) VALUES (?, ?)'
+      ).bind(session.email, Math.floor(Date.now() / 1000)).run();
+    }
+
+    // #2: Encrypt before storing in D1
+    const encrypted = await encryptData(body, env);
+
     const existing = await env.DB.prepare('SELECT id FROM app_data LIMIT 1').first();
     if (existing) {
       await env.DB.prepare('UPDATE app_data SET content = ? WHERE id = ?')
-        .bind(content, existing.id).run();
+        .bind(encrypted, existing.id).run();
     } else {
-      await env.DB.prepare('INSERT INTO app_data (content) VALUES (?)').bind(content).run();
+      await env.DB.prepare('INSERT INTO app_data (content) VALUES (?)').bind(encrypted).run();
     }
     return jsonRes({ success: true });
   } catch (e) {
     console.error('save data error:', e);
     return jsonRes({ error: 'Failed to save data' }, 500);
   }
+}
+
+// ── #2: Data-at-rest encryption ─────────────────────────────────
+
+async function encryptData(data, env) {
+  const keyHex = env.DATA_ENCRYPTION_KEY;
+  if (!keyHex) return JSON.stringify(data); // fallback — warn in logs
+  const keyBytes = hexToBytes(keyHex);
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+  return b64(iv) + ':' + b64(new Uint8Array(encrypted));
+}
+
+async function decryptData(encryptedStr, env) {
+  const keyHex = env.DATA_ENCRYPTION_KEY;
+  if (!keyHex) {
+    // No key — return plaintext (first load or key not set)
+    try { return JSON.parse(encryptedStr); } catch { return {}; }
+  }
+  const keyBytes = hexToBytes(keyHex);
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+  const parts = encryptedStr.split(':');
+  if (parts.length !== 2) return {};
+  const iv = b64ToUint8(parts[0]);
+  const ciphertext = b64ToUint8(parts[1]);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+  return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function b64(str) {
+  return btoa(String.fromCharCode(...new Uint8Array(str)));
+}
+
+function b64ToUint8(str) {
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// ── #4: Session UA binding helpers ─────────────────────────────
+
+async function sha256(text) {
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(text));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ── Crypto & sessions ─────────────────────────────────────────
@@ -238,9 +399,25 @@ async function validateSession(request, env) {
   const token = getToken(request);
   if (!token) return null;
   const now = Math.floor(Date.now() / 1000);
-  return await env.DB.prepare(
+
+  // #4: Check UA hash binding
+  const ua = request.headers.get('User-Agent') || '';
+  const uaHash = await sha256(ua);
+
+  const session = await env.DB.prepare(
     'SELECT * FROM sessions WHERE token = ? AND expires_at > ?'
-  ).bind(token, now).first() || null;
+  ).bind(token, now).first();
+
+  if (!session) return null;
+
+  // If UA hash is stored, verify it matches
+  if (session.ua_hash && session.ua_hash !== uaHash) {
+    // UA mismatch — invalidate session and require re-login
+    await env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
+    return null;
+  }
+
+  return session;
 }
 
 async function hashPassword(password, salt) {
@@ -274,7 +451,7 @@ async function genSalt() {
 function jsonRes(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
   });
 }
 
@@ -332,7 +509,8 @@ async function ensureAuthTables(env) {
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     email TEXT NOT NULL,
-    expires_at INTEGER NOT NULL
+    expires_at INTEGER NOT NULL,
+    ua_hash TEXT
   )`).run();
 
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_resets (
@@ -352,6 +530,13 @@ async function ensureAuthTables(env) {
     `CREATE INDEX IF NOT EXISTS login_attempts_email_ts ON login_attempts (email, ts)`
   ).run();
 
+  // #5: Rate limit tracking table
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS save_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    email TEXT NOT NULL
+  )`).run();
+
   for (const email of getAllowedEmails(env)) {
     await env.DB.prepare(`INSERT OR IGNORE INTO users (email) VALUES (?)`).bind(email).run();
   }
@@ -364,7 +549,7 @@ function defaultAppData() {
     firststeps: [
       { id: 1, title: 'Contact Information', details: 'Key people to call:\n- Spouse: 555-123-4567\n- Family: 555-987-6543\n- Attorney: 555-246-8101', notes: 'Call first if something happens' },
       { id: 2, title: 'Will & Estate', details: 'Location of documents:\n- Will: Filed with attorney John Smith\n- Trust: Stored in safe deposit box #123\n- Power of Attorney: Same location', notes: 'Provide death certificate copies' },
-      { id: 3, title: 'Digital Assets', details: 'What to do with online accounts:\n- Social Media: Facebook memorial, Twitter deleted\n- Email: Forward to Jane for 6 months\n- Cloud Storage: Google Drive shared with Jane', notes: 'Delete unused accounts after 1 year' },
+      { id: 3, title: 'Digital Assets', details: 'What to do with each online account:\n- Social Media: Facebook memorial, Twitter deleted\n- Email: Forward to Jane for 6 months\n- Cloud Storage: Google Drive shared with Jane', notes: 'Delete unused accounts after 1 year' },
       { id: 4, title: 'Debts & Obligations', details: 'What needs to be paid:\n- Mortgage: 6AL Property - $2,500/mo\n- Credit Cards: Close all, pay off balances\n- Car Loans: 2 vehicles - 95EB and 446BB', notes: 'Contact banks immediately' },
     ],
     insurance: [

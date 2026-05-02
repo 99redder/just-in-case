@@ -2,15 +2,20 @@ name = "just-in-case"
 main = "worker.js"
 compatibility_date = "2025-01-01"
 
-# Static HTML/CSS/JS files served from public/
-# The worker handles only /api/* routes
-assets = { directory = "public" }
+# Static HTML/CSS/JS files — served via worker so we can inject security headers
+[assets]
+directory    = "public"
+binding      = "ASSETS"
+run_worker_first = true
 
 [vars]
 # Update APP_URL after first deploy — used to build password reset email links.
 # Find it at: https://dash.cloudflare.com -> Workers & Pages -> just-in-case -> Triggers
 APP_URL    = "https://just-in-case.99redder.workers.dev"
 EMAIL_FROM = "noreply@easternshore.ai"
+# Data-at-rest encryption key (64-char hex = 32 bytes = AES-256).
+# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+DATA_ENCRYPTION_KEY = ""
 
 [[d1_databases]]
 binding       = "DB"

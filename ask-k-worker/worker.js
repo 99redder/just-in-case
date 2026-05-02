@@ -88,7 +88,7 @@ async function handleAskK(request, env, cors) {
   let liveData = null;
   try {
     const row = await env.DB.prepare('SELECT content FROM app_data LIMIT 1').first();
-    if (row?.content) liveData = JSON.parse(row.content);
+    if (row?.content) liveData = await decryptData(row.content, env);
   } catch (e) {
     console.error('app_data fetch failed:', e);
   }
@@ -259,6 +259,47 @@ async function logAskK(env, email, question, reply, error, status) {
   } catch (e) {
     console.error('askk_log insert failed:', e);
   }
+}
+
+async function decryptData(encryptedStr, env) {
+  const keyHex = env.DATA_ENCRYPTION_KEY;
+  if (!keyHex) {
+    try { return JSON.parse(encryptedStr); } catch { return {}; }
+  }
+  try {
+    const keyBytes = hexToBytes(keyHex);
+    const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
+    const parts = encryptedStr.split(':');
+    if (parts.length !== 2) return {};
+    const iv = b64ToUint8(parts[0]);
+    const ciphertext = b64ToUint8(parts[1]);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    return JSON.parse(new TextDecoder().decode(decrypted));
+  } catch {
+    // Decryption failed — return plaintext (migration case)
+    try { return JSON.parse(encryptedStr); } catch { return {}; }
+  }
+}
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function b64(str) {
+  return btoa(String.fromCharCode(...new Uint8Array(str)));
+}
+
+function b64ToUint8(str) {
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function jsonRes(data, status = 200, cors = {}) {

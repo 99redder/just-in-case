@@ -25,3 +25,5 @@ database_id   = "f75d17ed-9561-4a98-ba7c-5f786f178895"
 
 # Required secret (set with `wrangler secret put ASKK_API_KEY`):
 #   ASKK_API_KEY — MiniMax (or other OpenAI-compatible) API key.
+# Shared DATA_ENCRYPTION_KEY with main worker (AES-256-GCM).
+#   DATA_ENCRYPTION_KEY — 64-char hex key for data-at-rest encryption.
