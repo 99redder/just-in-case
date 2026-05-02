@@ -446,7 +446,8 @@
           </div>
         </div>`, 'No checklist items yet.');
 
-      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + checklistHtml + knowledgeBaseHtml();
+      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + checklistHtml;
+      app.innerHTML += await knowledgeBaseHtml();
     }
 
     async function loadKnowledgeBase() {
@@ -478,13 +479,22 @@
       }
     }
 
-    function knowledgeBaseHtml() {
+    async function knowledgeBaseHtml() {
+      let content = '';
+      try {
+        const token = localStorage.getItem('jic_session');
+        const r = await fetch('/api/knowledge-base', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (r.ok) {
+          const { entries } = await r.json();
+          if (entries && entries.length > 0) content = entries.map(e => e.content).join('\n\n');
+        }
+      } catch { /* ignore */ }
       return `<div class="kb-section">
         <div class="section-header">
           <div class="section-title">📚 K's Knowledge Base</div>
         </div>
         <p class="kb-hint">Add information here to extend what K knows beyond the static knowledge base. Each entry is separated by a blank line.</p>
-        <textarea id="kb-textarea" class="form-control" style="min-height:200px;font-family:monospace;font-size:.8rem" placeholder="Enter knowledge base entries here...&#10;&#10;Example:&#10;Family member: Chris handles all property repairs&#10;&#10;Attorney: Jane Smith, 555-0100, jane@lawpractice.com"></textarea>
+        <textarea id="kb-textarea" class="form-control" style="min-height:200px;font-family:monospace;font-size:.8rem" placeholder="Enter knowledge base entries here...&#10;&#10;Example:&#10;Family member: Chris handles all property repairs&#10;&#10;Attorney: Jane Smith, 555-0100, jane@lawpractice.com">${esc(content)}</textarea>
         <div style="display:flex;align-items:center;gap:.75rem;margin-top:.5rem">
           <button class="btn btn-primary" onclick="saveKnowledgeBase()">Save to K</button>
           <span id="kb-save-status" style="font-size:.85rem;color:var(--text-muted)"></span>
@@ -724,11 +734,6 @@
 
       document.body.style.display = '';
       renderApp();
-      // Load KB content into the textarea after render
-      loadKnowledgeBase().then(({ content }) => {
-        const ta = document.getElementById('kb-textarea');
-        if (ta && content) ta.value = content;
-      });
     })();
   </script>
   <script>
