@@ -2,11 +2,15 @@ name = "just-in-case"
 main = "worker.js"
 compatibility_date = "2025-01-01"
 
-# Static HTML/CSS/JS files — served via worker so we can inject security headers
+# Static HTML/CSS/JS files — served via worker so we can inject security headers.
+# html_handling = "none" disables Cloudflare's automatic /foo.html → /foo
+# redirect, which previously caused the worker's asset wrapper to mis-serve
+# every .html page as index.html.
 [assets]
 directory    = "public"
 binding      = "ASSETS"
 run_worker_first = true
+html_handling = "none"
 
 [vars]
 # Update APP_URL after first deploy — used to build password reset email links.

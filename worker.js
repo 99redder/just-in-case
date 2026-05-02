@@ -77,31 +77,19 @@ export default {
       if (request.method === 'DELETE') return handleDeleteKnowledgeEntry(request, env);
     }
 
-    // Static assets — serve from assets but inject security headers
+    // Static assets — serve from assets binding, then inject security headers.
+    // No SPA fallback: this is a multi-page app, every page has its own URL.
     if (request.method === 'GET' || request.method === 'HEAD') {
       const asset = await env.ASSETS.fetch(request);
-      if (asset.status === 404 || asset.status === 307) {
-        // SPA fallback: return index.html for non-file routes
-        try {
-          const indexReq = new Request(new URL('/', request.url), request);
-          const index = await env.ASSETS.fetch(indexReq);
-          if (index.ok) {
-            const headers = new Headers(index.headers);
-            for (const [key, value] of Object.entries(pageHeaders())) {
-              headers.set(key, value);
-            }
-            return new Response(index.body, { status: 200, statusText: 'OK', headers });
-          }
-        } catch(e) {
-          console.error('SPA fallback error:', e);
-        }
-      }
-      // Inject security headers into asset response
       const headers = new Headers(asset.headers);
       for (const [key, value] of Object.entries(pageHeaders())) {
         headers.set(key, value);
       }
-      return new Response(asset.body, { status: asset.status, statusText: asset.statusText, headers });
+      return new Response(asset.body, {
+        status: asset.status,
+        statusText: asset.statusText,
+        headers,
+      });
     }
 
     return new Response('Not Found', { status: 404, headers: combinedHeaders() });
