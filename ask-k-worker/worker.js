@@ -178,6 +178,7 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
         'Insurance': liveData.insurance,
         'Money': liveData.money,
         'Checklist': liveData.checklist,
+        'General Information': liveData.generalinfo,
       }).map(([section, items]) => {
         const count = Array.isArray(items) ? items.length : 0;
         return `${section}: ${count} item${count !== 1 ? 's' : ''}`;

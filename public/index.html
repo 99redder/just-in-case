@@ -707,7 +707,7 @@
 
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
-    let appData = { firststeps: [], insurance: [], money: [], checklist: [] };
+    let appData = { firststeps: [], insurance: [], money: [], checklist: [], generalinfo: [] };
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
@@ -726,7 +726,8 @@
         firststeps: Array.isArray(data?.firststeps) ? data.firststeps : [],
         insurance: Array.isArray(data?.insurance) ? data.insurance : [],
         money: Array.isArray(data?.money) ? data.money.map(normalizeMoneyItem) : [],
-        checklist: Array.isArray(data?.checklist) ? data.checklist : []
+        checklist: Array.isArray(data?.checklist) ? data.checklist : [],
+        generalinfo: Array.isArray(data?.generalinfo) ? data.generalinfo : []
       };
     }
 
@@ -841,6 +842,25 @@
           </div>
         </div>
       `;
+
+      // General Information Section
+      html += `
+        <div class="menu-card">
+          <div class="menu-header" onclick="toggleMenu('generalinfo')">
+            <h3><span class="menu-icon">📄</span> General Information</h3>
+            <span class="chevron">▼</span>
+          </div>
+          <div class="menu-content" id="generalinfo-content">
+            ${appData.generalinfo.length > 0 ? appData.generalinfo.map(item => `
+              <div class="menu-item">
+                <div class="menu-item-info">
+                  <div class="menu-item-title">${escapeHtml(item.name || '')}</div>
+                  ${item.details ? `<div class="menu-item-subtitle">${escapeHtml(item.details)}</div>` : ''}
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No general information added yet.</div>'}
+          </div>
+        </div>`;
 
       app.innerHTML = html;
     }

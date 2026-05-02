@@ -289,7 +289,7 @@ async function handleSaveData(request, env) {
     }
 
     // Validate expected top-level keys
-    const allowedKeys = ['firststeps', 'insurance', 'money', 'checklist'];
+    const allowedKeys = ['firststeps', 'insurance', 'money', 'checklist', 'generalinfo'];
     for (const key of Object.keys(body)) {
       if (!allowedKeys.includes(key)) {
         return jsonRes({ error: `Unexpected key: ${key}` }, 400);
@@ -581,6 +581,7 @@ function defaultAppData() {
       { id: 7, text: 'Review rental property insurance', completed: false },
       { id: 8, text: 'Check LLC compliance requirements', completed: false }
     ],
+    generalinfo: [],
   };
 }
 
