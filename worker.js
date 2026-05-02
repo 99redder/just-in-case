@@ -510,6 +510,15 @@ async function ensureAuthTables(env) {
     expires_at INTEGER NOT NULL,
     ua_hash TEXT
   )`).run();
+  // Migration: pre-existing sessions tables don't have ua_hash. Add it if missing.
+  // D1 doesn't support IF NOT EXISTS on ALTER, so swallow the duplicate-column error.
+  try {
+    await env.DB.prepare(`ALTER TABLE sessions ADD COLUMN ua_hash TEXT`).run();
+  } catch (e) {
+    if (!String(e?.message || '').toLowerCase().includes('duplicate column')) {
+      console.error('sessions ALTER failed:', e);
+    }
+  }
 
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS password_resets (
     token TEXT PRIMARY KEY,
