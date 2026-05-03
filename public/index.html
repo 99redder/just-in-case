@@ -711,6 +711,7 @@
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
     let appData = { firststeps: [], insurance: [], money: [], checklist: [], generalinfo: [] };
+    let kbEntries = [];
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
@@ -734,6 +735,65 @@
       };
     }
 
+    function isLikelyContactLine(text) {
+      if (!text) return false;
+      const s = String(text).trim();
+      if (!s) return false;
+      const phone = /\b(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?){2}\d{4}\b/.test(s);
+      const email = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(s);
+      const url = /https?:\/\/\S+/i.test(s);
+      const keyword = /\b(contact|phone|call|email|attorney|agent|advisor|manager|hospital|doctor|bank|insurance|support|hotline)\b/i.test(s);
+      return phone || email || (url && keyword) || keyword;
+    }
+
+    function extractContactLines(text, source) {
+      return String(text || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => isLikelyContactLine(line))
+        .map(line => ({ source, line }));
+    }
+
+    function buildContactHubItems() {
+      const items = [];
+      for (const x of appData.firststeps || []) {
+        items.push(...extractContactLines(`${x.title || ''}\n${x.notes || ''}\n${x.details || ''}`, `First Steps: ${x.title || 'Item'}`));
+      }
+      for (const x of appData.insurance || []) {
+        items.push(...extractContactLines(`${x.type || ''} ${x.name || ''}\n${x.notes || ''}\n${x.details || ''}`, `Insurance: ${x.name || x.type || 'Policy'}`));
+      }
+      for (const x of appData.money || []) {
+        items.push(...extractContactLines(`${x.account || ''}\n${x.username || ''}\n${x.instructions || ''}\n${x.loginUrl || ''}`, `Money: ${x.account || 'Account'}`));
+      }
+      for (const x of appData.generalinfo || []) {
+        items.push(...extractContactLines(`${x.name || ''}\n${x.notes || ''}\n${x.details || ''}`, `General Info: ${x.name || 'Item'}`));
+      }
+      for (const e of kbEntries || []) {
+        items.push(...extractContactLines(e.content || '', 'K Knowledge Base'));
+      }
+      const deduped = [];
+      const seen = new Set();
+      for (const i of items) {
+        const key = i.line.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(i);
+      }
+      return deduped;
+    }
+
+    async function loadKnowledgeBaseEntries() {
+      try {
+        const token = localStorage.getItem('jic_session');
+        const r = await fetch('/api/knowledge-base', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!r.ok) return [];
+        const data = await r.json();
+        return Array.isArray(data?.entries) ? data.entries : [];
+      } catch {
+        return [];
+      }
+    }
+
     // Render functions
     async function renderApp() {
       const app = document.getElementById('app');
@@ -749,6 +809,8 @@
       // Fetch data
       const loadData = await loadAppData();
       appData = normalizeData(loadData);
+      kbEntries = await loadKnowledgeBaseEntries();
+      const contactItems = buildContactHubItems();
 
       let html = '';
 
@@ -819,6 +881,26 @@
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
+          </div>
+        </div>
+      `;
+
+      // Contact Link Card
+      html += `
+        <div class="menu-card">
+          <div class="menu-header" onclick="toggleMenu('contactlink')">
+            <h3><span class="menu-icon">🔗</span> Contact Link Card</h3>
+            <span class="chevron">▼</span>
+          </div>
+          <div class="menu-content" id="contactlink-content">
+            ${contactItems.length > 0 ? contactItems.map(item => `
+              <div class="menu-item">
+                <div class="menu-item-info">
+                  <div class="menu-item-title">${escapeHtml(item.line)}</div>
+                  <div class="menu-item-subtitle">${escapeHtml(item.source)}</div>
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No contact details found yet. Add contact info in the editor or K knowledge base.</div>'}
           </div>
         </div>
       `;

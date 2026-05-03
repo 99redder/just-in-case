@@ -24,14 +24,33 @@ function securityHeaders() {
   };
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+function getAllowedCorsOrigins(env) {
+  const fromEnv = String(env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fromEnv.length) return fromEnv;
+  return [
+    'https://just-in-case.99redder.workers.dev',
+    'http://localhost:8787',
+    'http://127.0.0.1:8787',
+  ];
+}
 
-function combinedHeaders(extra = {}) {
-  return { ...securityHeaders(), ...corsHeaders, ...extra };
+function corsHeaders(request, env) {
+  const origin = request?.headers?.get('Origin') || '';
+  const allowed = getAllowedCorsOrigins(env);
+  const allowOrigin = allowed.includes(origin) ? origin : allowed[0];
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+}
+
+function combinedHeaders(request = null, env = {}, extra = {}) {
+  return { ...securityHeaders(), ...corsHeaders(request, env), ...extra };
 }
 
 // CSP for static assets (HTML pages)
@@ -44,7 +63,10 @@ function pageHeaders() {
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     'Pragma': 'no-cache',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; font-src https://cdnjs.cloudflare.com; connect-src 'self' https://just-in-case-askk.99redder.workers.dev; base-uri 'self'; form-action 'self';"
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; font-src https://cdnjs.cloudflare.com; connect-src 'self' https://just-in-case-askk.99redder.workers.dev; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests"
   };
 }
 
@@ -54,7 +76,7 @@ export default {
     const path = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: combinedHeaders() });
+      return new Response(null, { headers: combinedHeaders(request, env) });
     }
 
     // API routes handled by worker
@@ -115,7 +137,7 @@ export default {
       });
     }
 
-    return new Response('Not Found', { status: 404, headers: combinedHeaders() });
+    return new Response('Not Found', { status: 404, headers: combinedHeaders(request, env) });
   },
 
   // Daily log retention sweep, fired by the cron in wrangler.toml.
@@ -301,11 +323,11 @@ async function handleGetData(request, env) {
       // #2: Decrypt before sending to client
       const decrypted = await decryptData(data.content, env);
       return new Response(JSON.stringify(decrypted), {
-        headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
+        headers: { 'Content-Type': 'application/json', ...combinedHeaders(request, env) },
       });
     }
     return new Response(JSON.stringify(defaultAppData()), {
-      headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
+      headers: { 'Content-Type': 'application/json', ...combinedHeaders(request, env) },
     });
   } catch (e) {
     console.error('get data error:', e);
@@ -488,10 +510,10 @@ async function genSalt() {
   return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function jsonRes(data, status = 200) {
+function jsonRes(data, status = 200, request = null, env = {}) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
+    headers: { 'Content-Type': 'application/json', ...combinedHeaders(request, env) },
   });
 }
 
