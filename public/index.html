@@ -158,6 +158,12 @@
       margin-bottom: 0.2rem;
     }
 
+    .contact-title {
+      color: var(--text-muted);
+      font-size: 0.76rem;
+      margin-bottom: 0.35rem;
+    }
+
     .contact-line {
       color: var(--text-muted);
       display: flex;
@@ -911,6 +917,29 @@
       return '☎️';
     }
 
+    function contactDisplayParts(source) {
+      const sourceText = String(source || '').trim();
+      const kbPrefix = 'K Knowledge Base: ';
+      const displayText = sourceText.startsWith(kbPrefix) ? sourceText.slice(kbPrefix.length) : sourceText;
+      const parenthetical = displayText.match(/^(.+?)\s*\(([^)]+)\)$/);
+      if (parenthetical) {
+        return { name: parenthetical[1].trim(), title: parenthetical[2].trim() };
+      }
+      const dashed = displayText.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+      if (dashed) {
+        return { name: dashed[1].trim(), title: dashed[2].trim() };
+      }
+      return { name: displayText, title: '' };
+    }
+
+    function renderContactHeader(source) {
+      const display = contactDisplayParts(source);
+      return `
+        <div class="contact-source">${escapeHtml(display.name)}</div>
+        ${display.title ? `<div class="contact-title">${escapeHtml(display.title)}</div>` : ''}
+      `;
+    }
+
     function collectContactCandidatesFromText(source, text) {
       const candidates = [];
       let activePropertyContext = propertyContextFromLine(source);
@@ -1068,7 +1097,7 @@
             ${contactLinks.length > 0 ? contactLinks.map(item => `
               <div class="menu-item">
                 <div class="menu-item-info">
-                  <div class="contact-source">${escapeHtml(item.source)}</div>
+                  ${renderContactHeader(item.source)}
                   <div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(item.kind)}</span>${contactLinkify(item.line)}</div>
                 </div>
               </div>
