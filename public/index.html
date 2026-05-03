@@ -737,25 +737,58 @@
         .filter(Boolean);
     }
 
-    function isLikelyContactLine(line, context = '') {
-      const text = `${context} ${line}`.toLowerCase();
-      const hasPhone = hasPhoneNumber(line);
-      const hasEmail = hasEmailAddress(line);
-      const hasUrl = hasUrlValue(line);
-      const hasContactContext = /\b(contact|call|phone|tel|email|e-mail|agent|attorney|lawyer|advisor|broker|provider|support|help|customer service|representative|spouse|family|doctor|physician|beneficiary|emergency)\b/i.test(text);
-      return hasPhone || hasEmail || (hasUrl && hasContactContext) || hasContactContext;
+    function extractContactValues(line) {
+      const text = String(line || '');
+      const phoneMatches = text.match(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/g) || [];
+      const emailMatches = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+      return [...phoneMatches, ...emailMatches]
+        .map(value => value.replace(/[),.;:]+$/, '').trim())
+        .filter(value => value && !isExcludedContactValue(value));
     }
 
-    function hasPhoneNumber(text) {
-      return /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/.test(text);
+    function isExcludedContactValue(value) {
+      const normalized = String(value || '').trim().toLowerCase();
+      return normalized.startsWith('chris.gorham@outlook');
     }
 
-    function hasEmailAddress(text) {
-      return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text);
+    function isEmailContactValue(value) {
+      return /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(String(value || '').trim());
     }
 
-    function hasUrlValue(text) {
-      return /https?:\/\/\S+|www\.\S+/i.test(text);
+    function isPhoneContactValue(value) {
+      return /^(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\d{3}[-.\s]\d{3}[-.\s]\d{4})$/.test(String(value || '').trim());
+    }
+
+    function contactLinkify(text) {
+      return String(text || '').split(/,\s*/).map(value => {
+        const clean = value.trim();
+        if (isEmailContactValue(clean)) {
+          return `<a href="mailto:${escapeHtml(clean)}">${escapeHtml(clean)}</a>`;
+        }
+        if (isPhoneContactValue(clean)) {
+          const hrefValue = clean.replace(/[^\d+]/g, '');
+          return `<a href="tel:${escapeHtml(hrefValue)}">${escapeHtml(clean)}</a>`;
+        }
+        return escapeHtml(clean);
+      }).join(', ');
+    }
+
+    function contactSourceFromLine(baseSource, line) {
+      const phoneIndex = String(line).search(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/);
+      const emailIndex = String(line).search(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+      const indexes = [phoneIndex, emailIndex].filter(index => index >= 0);
+      if (!indexes.length) return baseSource;
+
+      const label = String(line)
+        .slice(0, Math.min(...indexes))
+        .replace(/\b(phone|tel|email|e-mail|contact)\b\s*[:=-]?\s*$/i, '')
+        .replace(/[(:=,\-\s]+$/, '')
+        .trim();
+
+      if (!label || label.length > 80 || baseSource.toLowerCase().includes(label.toLowerCase())) {
+        return baseSource;
+      }
+      return `${baseSource}: ${label}`;
     }
 
     function collectContactCandidatesFromItem(sectionLabel, item, fields) {
@@ -767,11 +800,12 @@
         const value = item[field];
         if (!value) return;
         splitContactLines(value).forEach(line => {
-          const isOnlyItemLabel = line === title && !hasPhoneNumber(line) && !hasEmailAddress(line) && !hasUrlValue(line);
-          if (isOnlyItemLabel) return;
-          if (isLikelyContactLine(line, `${sectionLabel} ${title} ${field}`)) {
-            candidates.push({ source, line });
-          }
+          const contactValues = extractContactValues(line);
+          if (!contactValues.length) return;
+          candidates.push({
+            source: contactSourceFromLine(source, line),
+            line: contactValues.join(', '),
+          });
         });
       });
 
@@ -780,19 +814,24 @@
 
     function collectAppContactCandidates(data) {
       return [
-        ...(data.firststeps || []).flatMap(item => collectContactCandidatesFromItem('First Steps', item, ['title', 'notes', 'details'])),
-        ...(data.insurance || []).flatMap(item => collectContactCandidatesFromItem('Insurance', item, ['type', 'name', 'notes', 'details'])),
-        ...(data.money || []).flatMap(item => collectContactCandidatesFromItem('Money', item, ['account', 'type', 'loginUrl', 'username', 'instructions'])),
-        ...(data.generalinfo || []).flatMap(item => collectContactCandidatesFromItem('General Information', item, ['name', 'details'])),
+        ...(data.firststeps || []).flatMap(item => collectContactCandidatesFromItem('First Steps', item, ['notes', 'details'])),
+        ...(data.insurance || []).flatMap(item => collectContactCandidatesFromItem('Insurance', item, ['notes', 'details'])),
+        ...(data.money || []).flatMap(item => collectContactCandidatesFromItem('Money', item, ['instructions'])),
+        ...(data.generalinfo || []).flatMap(item => collectContactCandidatesFromItem('General Information', item, ['details'])),
       ];
     }
 
     function collectKnowledgeBaseContactCandidates(entries) {
       return entries.flatMap(entry => {
         const content = entry?.content || '';
-        return splitContactLines(content)
-          .filter(line => isLikelyContactLine(line, 'K Knowledge Base'))
-          .map(line => ({ source: 'K Knowledge Base', line }));
+        return splitContactLines(content).flatMap(line => {
+          const contactValues = extractContactValues(line);
+          if (!contactValues.length) return [];
+          return [{
+            source: contactSourceFromLine('K Knowledge Base', line),
+            line: contactValues.join(', '),
+          }];
+        });
       });
     }
 
@@ -902,7 +941,7 @@
               <div class="menu-item">
                 <div class="menu-item-info">
                   <div class="contact-source">${escapeHtml(item.source)}</div>
-                  <div class="contact-line">${linkify(item.line)}</div>
+                  <div class="contact-line">${contactLinkify(item.line)}</div>
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No contact information found yet.</div>'}
