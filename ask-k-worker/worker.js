@@ -36,6 +36,88 @@ const ALLOWED_ORIGINS = [
 
 const RATE_LIMIT_PER_DAY = 100;
 
+// ── Playbooks ──────────────────────────────────────────────────
+//
+// Each playbook is an outline. K renders the actual walkthrough at request
+// time using the current liveAppData + dynamic KB, so as accounts change,
+// checklist items get completed, or new info is added, the playbook reflects
+// it automatically. Add new playbooks here and they'll show up in the UI
+// after a deploy.
+const PLAYBOOKS = {
+  'death-chris': {
+    title: 'If Chris dies',
+    description: 'Step-by-step walkthrough for Megan covering the days, weeks, and months after.',
+    outline: `
+Render this as a structured walkthrough with three time-phase sections (in order): "First 24 hours", "First week", "First month", "Ongoing". Within each phase, give numbered steps. Each step should be ONE concrete action.
+
+Use the live app data and knowledge base to fill in specifics — names, lenders, account types, addresses. Reference app sections by name when helpful (for example: "open the Insurance section, tap VGLI Claim").
+
+Mark each step that maps to a Checklist item: prefix with "[done]" if that checklist entry is already completed, or "[ ]" otherwise. Steps that don't map to a checklist item should not have a checkbox prefix.
+
+Suggested topics, but feel free to reorder/merge based on what the data actually says:
+
+First 24 hours:
+- Notify family in priority order from the knowledge base.
+- Contact a funeral home, request 5+ certified death certificates.
+- Honor Chris's final wishes (burial, organ donation if possible — see the knowledge base).
+- Don't try to do financial or legal work today.
+
+First week:
+- File the VGLI life insurance claim. The full step-by-step is in the Insurance section under "VGLI Claim". Walk through that entry.
+- Notify each financial institution Chris had accounts with — pull from the Money section.
+- Update DEERS for healthcare (USFHP). See the knowledge base for the phone number and process.
+- Cancel Umbrella insurance (RLI) — see the knowledge base for the location of the policy details.
+- Notify rental property managers and tenants — contact info is in the Money section under Rental Properties.
+
+First month:
+- Hire a CPA for this year's tax return (the family does not have one on retainer; the checklist already recommends this).
+- Walk through every Checklist item that's still open and decide whether to do it now or later.
+
+Ongoing:
+- Continue rental property management for now (the existing checklist suggests not selling immediately).
+- USFHP healthcare continues as a survivor — see the knowledge base.
+- The mortgage on the primary residence keeps autopaying from Robinhood Checking; there is no immediate cash crunch.
+
+End with a short "Where to find more detail" pointer that names the relevant app sections.
+
+Do NOT echo full account numbers, control numbers, policy numbers, or any other identifier verbatim. Tell Megan where in the app the identifier lives instead.
+`,
+  },
+
+  'medical': {
+    title: 'Medical emergency or incapacitation',
+    description: 'When Chris or Megan is alive but unable to make decisions or handle finances.',
+    outline: `
+Render as a walkthrough with these phases: "Right now", "First few days", "If recovery looks long". Numbered steps within each phase.
+
+This scenario is different from death: accounts shouldn't be closed, and most autopay arrangements continue. Frame the steps around keeping the household running while one spouse is unavailable.
+
+Suggested topics:
+
+Right now:
+- Get medical care. That's the priority.
+- Notify immediate family (priority order is in the knowledge base).
+- Note: there is no Power of Attorney or healthcare proxy on file. Under Maryland law, the spouse generally has default authority for medical decisions, but financial / legal matters can require one.
+
+First few days:
+- Most monthly bills autopay from Robinhood Checking — they'll keep flowing for a while. Pull up the Monthly Budget tab on the Rental Property Manager site (see the knowledge base) to see the full picture.
+- Mortgage on the primary residence (Navy Federal): autopaid on the 1st.
+- Property manager fees and rental insurance: autopaid.
+- Touch base with rental property managers — they can run things on autopilot for a stretch.
+
+If recovery looks long:
+- Talk to lenders (Navy Federal mortgage especially) about hardship or forbearance options if income is interrupted.
+- Consider hiring an attorney to draft a Power of Attorney (the family does not have one on retainer).
+- Eastern Shore AI LLC and the Survival Node business: revenue is small; pause or wind down if active management isn't possible.
+- Re-examine the rental properties — is current property management enough, or is a sale needed?
+
+End with: "This is informational only. K can't give legal or medical advice — talk to professionals when major decisions are on the table."
+
+Do NOT echo full account numbers, control numbers, policy numbers, or any other identifier verbatim.
+`,
+  },
+};
+
 function buildCorsHeaders(request) {
   const origin = request.headers.get('Origin') || '';
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
@@ -92,25 +174,29 @@ async function handleAskK(request, env, cors) {
     return jsonRes({ error: 'Invalid JSON' }, 400, cors);
   }
 
+  const playbookId = body.playbook && PLAYBOOKS[body.playbook] ? body.playbook : null;
   const question = String(body.message || '').trim();
   const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
-  if (!question) return jsonRes({ error: 'Missing message' }, 400, cors);
-  if (question.length > 1000) {
-    return jsonRes({ error: 'Message too long. Keep it under 1000 characters.' }, 400, cors);
-  }
 
-  // Block obvious prompt-injection patterns before they hit the model.
-  const lower = question.toLowerCase();
-  const injectionPatterns = [
-    'ignore previous', 'ignore all previous', 'disregard previous',
-    'forget your instructions', 'new instructions:', 'system prompt:',
-    'you are now', 'pretend you are', 'roleplay as',
-    'ignore the above', 'ignore everything above',
-  ];
-  if (injectionPatterns.some((p) => lower.includes(p))) {
-    const reply = "I'm here to help you find information stored in the Just In Case app. What would you like to know?";
-    await logAskK(env, session.email, question, reply, null, 200);
-    return jsonRes({ ok: true, reply }, 200, cors);
+  if (!playbookId) {
+    if (!question) return jsonRes({ error: 'Missing message' }, 400, cors);
+    if (question.length > 1000) {
+      return jsonRes({ error: 'Message too long. Keep it under 1000 characters.' }, 400, cors);
+    }
+
+    // Block obvious prompt-injection patterns before they hit the model.
+    const lower = question.toLowerCase();
+    const injectionPatterns = [
+      'ignore previous', 'ignore all previous', 'disregard previous',
+      'forget your instructions', 'new instructions:', 'system prompt:',
+      'you are now', 'pretend you are', 'roleplay as',
+      'ignore the above', 'ignore everything above',
+    ];
+    if (injectionPatterns.some((p) => lower.includes(p))) {
+      const reply = "I'm here to help you find information stored in the Just In Case app. What would you like to know?";
+      await logAskK(env, session.email, question, reply, null, 200);
+      return jsonRes({ ok: true, reply }, 200, cors);
+    }
   }
 
   let liveData = null;
@@ -128,14 +214,16 @@ async function handleAskK(request, env, cors) {
   }
 
   try {
-    const rawReply = await generateAnswer(env, question, history, liveData, session.email);
+    const logQuestion = playbookId ? `[playbook: ${playbookId}]` : question;
+    const rawReply = await generateAnswer(env, question, history, liveData, session.email, playbookId);
     const reply = scrubReply(rawReply);
-    await logAskK(env, session.email, question, reply, null, 200);
+    await logAskK(env, session.email, logQuestion, reply, null, 200);
     return jsonRes({ ok: true, reply }, 200, cors);
   } catch (e) {
     console.error('ask-k error:', e);
     const msg = e?.message || 'Assistant temporarily unavailable';
-    await logAskK(env, session.email, question, null, msg, 502);
+    const logQuestion = playbookId ? `[playbook: ${playbookId}]` : question;
+    await logAskK(env, session.email, logQuestion, null, msg, 502);
     return jsonRes({ ok: false, error: msg }, 502, cors);
   }
 }
@@ -159,14 +247,27 @@ function scrubReply(text) {
     .replace(/\b\d{9,}\b/g, REDACTED);
 }
 
-async function generateAnswer(env, question, history, liveData, userEmail) {
+async function generateAnswer(env, question, history, liveData, userEmail, playbookId = null) {
   const apiKey = (env.ASKK_API_KEY || '').trim();
   if (!apiKey) throw new Error('ASKK_API_KEY not configured');
 
   const baseUrl = normalizeChatCompletionsUrl(env.ASKK_BASE_URL || 'https://api.minimaxi.com/v1');
   const model = (env.ASKK_MODEL || 'MiniMax-Text-01').trim();
 
-  const systemPrompt = [
+  const playbook = playbookId ? PLAYBOOKS[playbookId] : null;
+
+  const systemPrompt = playbook ? [
+    'You are K running in PLAYBOOK MODE.',
+    `The user has selected the playbook titled: "${playbook.title}".`,
+    'Your job is to render a structured walkthrough using the user\'s live app data and knowledge base. The walkthrough must reflect what is actually in the data right now — names, lenders, addresses, current checklist completion state, etc.',
+    'OUTPUT FORMAT: use clear section headers for each phase. Within each phase, use numbered steps. One concrete action per step.',
+    'For any step that maps to an existing Checklist item: prefix with "[done]" if that checklist entry has completed=true, or "[ ]" if it is open. Steps with no checklist mapping have no prefix.',
+    'Reference app sections by name when useful (for example: "open the Insurance section, tap VGLI Claim").',
+    'Do NOT echo full account numbers, control numbers, policy numbers, member IDs, or any other long identifier verbatim. Tell the user where in the app the identifier lives instead. Last 3-4 digits are okay for disambiguation.',
+    'Use plain, calm, action-oriented language. This is being read by someone in a stressful moment.',
+    'Do not output chain-of-thought or meta commentary. Just the playbook.',
+    `PLAYBOOK OUTLINE (use as guidance, fill in specifics from the data):\n${playbook.outline}`,
+  ].join(' ') : [
     'You are K, the private assistant for the family\'s "Just In Case" emergency information app.',
     'Only the two configured users can reach you — the app is auth-guarded. You may speak frankly about the data they have stored.',
     'You are read-only: answer questions, summarize, and walk the user through what is stored. Never claim to take actions on accounts.',
@@ -207,6 +308,7 @@ async function generateAnswer(env, question, history, liveData, userEmail) {
 
   const userPayload = {
     user: userEmail,
+    request: playbook ? `Render the "${playbook.title}" playbook now.` : null,
     question,
     history: trimmedHistory,
     knowledgeBase: clip(dynamicKB, 8000),

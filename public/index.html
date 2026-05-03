@@ -629,6 +629,8 @@
     </div>
     <div class="askk-messages" id="askk-messages"></div>
     <div class="askk-quick-actions" id="askk-quick-actions">
+      <button class="askk-quick-btn askk-playbook-btn" data-playbook="death-chris" data-label="If Chris dies">📋 If Chris dies</button>
+      <button class="askk-quick-btn askk-playbook-btn" data-playbook="medical" data-label="Medical emergency">📋 Medical emergency</button>
       <button class="askk-quick-btn">Where do we have money?</button>
       <button class="askk-quick-btn">What do I do first?</button>
       <button class="askk-quick-btn">List the insurance policies</button>
@@ -1068,10 +1070,11 @@
         document.getElementById('askk-typing-indicator')?.remove();
       }
 
-      async function sendMessage(text) {
-        const trimmed = (text || '').trim();
-        if (!trimmed || isTyping) return;
-        addMessage('user', trimmed);
+      async function sendMessage(text, opts = {}) {
+        const playbook = opts.playbook || null;
+        const userLabel = playbook ? (opts.label || `Playbook: ${playbook}`) : (text || '').trim();
+        if (!userLabel || isTyping) return;
+        addMessage('user', userLabel);
         inputEl.value = '';
         inputEl.style.height = 'auto';
         sendBtn.disabled = true;
@@ -1088,7 +1091,8 @@
               ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             },
             body: JSON.stringify({
-              message: trimmed,
+              message: playbook ? '' : userLabel,
+              playbook,
               history: history.slice(-10),
             }),
           });
@@ -1125,8 +1129,13 @@
         inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
       });
       quickActions?.addEventListener('click', (e) => {
-        if (e.target.classList.contains('askk-quick-btn')) {
-          sendMessage(e.target.textContent.trim());
+        const btn = e.target.closest('.askk-quick-btn');
+        if (!btn) return;
+        const playbook = btn.dataset.playbook;
+        if (playbook) {
+          sendMessage('', { playbook, label: `▶ ${btn.dataset.label || 'Playbook'}` });
+        } else {
+          sendMessage(btn.textContent.trim());
         }
       });
     }
