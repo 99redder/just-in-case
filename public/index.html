@@ -160,9 +160,25 @@
 
     .contact-line {
       color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
       font-size: 0.82rem;
       word-break: break-word;
       white-space: pre-wrap;
+    }
+
+    .contact-icon {
+      width: 1.35rem;
+      height: 1.35rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: rgba(52, 211, 153, 0.16);
+      color: #a7f3d0;
+      flex-shrink: 0;
+      font-size: 0.82rem;
     }
 
     .contact-line a {
@@ -748,18 +764,40 @@
         .filter(Boolean);
     }
 
+    const phoneContactPattern = /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/g;
+    const emailContactPattern = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
     function extractContactValues(line) {
       const text = String(line || '');
-      const phoneMatches = text.match(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/g) || [];
-      const emailMatches = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
-      return [...phoneMatches, ...emailMatches]
-        .map(value => value.replace(/[),.;:]+$/, '').trim())
-        .filter(value => value && !isExcludedContactValue(value));
+      const matches = [];
+      text.replace(phoneContactPattern, (value, index) => {
+        matches.push({ value, index, kind: contactKindFromLine(text, index) });
+        return value;
+      });
+      text.replace(emailContactPattern, (value, index) => {
+        matches.push({ value, index, kind: 'email' });
+        return value;
+      });
+
+      return matches
+        .sort((a, b) => a.index - b.index)
+        .map(match => ({
+          ...match,
+          value: match.value.replace(/[),.;:]+$/, '').trim(),
+          label: contactLabelFromLine(text, match.index),
+        }))
+        .filter(match => match.value && !isExcludedContactValue(match.value));
     }
 
     function isExcludedContactValue(value) {
       const normalized = String(value || '').trim().toLowerCase();
       return normalized.startsWith('chris.gorham@outlook');
+    }
+
+    function contactKindFromLine(line, contactIndex) {
+      const before = String(line || '').slice(0, contactIndex);
+      const labels = before.match(/\b(phone|tel|fax)\b/gi) || [];
+      return labels.length && labels[labels.length - 1].toLowerCase() === 'fax' ? 'fax' : 'phone';
     }
 
     function isEmailContactValue(value) {
@@ -784,22 +822,40 @@
       }).join(', ');
     }
 
-    function contactSourceFromLine(baseSource, line) {
-      const phoneIndex = String(line).search(/(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/);
-      const emailIndex = String(line).search(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
-      const indexes = [phoneIndex, emailIndex].filter(index => index >= 0);
-      if (!indexes.length) return baseSource;
-
+    function contactLabelFromLine(line, contactIndex) {
       const label = String(line)
-        .slice(0, Math.min(...indexes))
-        .replace(/\b(phone|tel|email|e-mail|contact)\b\s*[:=-]?\s*$/i, '')
+        .slice(0, contactIndex)
+        .replace(phoneContactPattern, '')
+        .replace(emailContactPattern, '')
+        .split(/\b(?:phone|tel|email|e-mail|fax|contact)\b\s*[:=-]?/i)
+        .filter(Boolean)
+        .pop() || '';
+
+      return label
+        .replace(/\b(provider|agent|manager|office|main|direct)\b\s*[:=-]?\s*/i, '')
         .replace(/[(:=,\-\s]+$/, '')
         .trim();
+    }
 
+    function contactSourceFromLine(baseSource, label) {
       if (!label || label.length > 80 || baseSource.toLowerCase().includes(label.toLowerCase())) {
         return baseSource;
       }
       return `${baseSource}: ${label}`;
+    }
+
+    function isGenericContactSource(source) {
+      return /^(K Knowledge Base|First Steps: Contact Information|First Steps: Entry|General Information: Entry|Money: Unknown Account)$/i.test(String(source || '').trim());
+    }
+
+    function hasClearContactContext(baseSource, label) {
+      return Boolean(label && label.trim()) || !isGenericContactSource(baseSource);
+    }
+
+    function contactIcon(kind) {
+      if (kind === 'fax') return '📠';
+      if (kind === 'email') return '✉️';
+      return '☎️';
     }
 
     function collectContactCandidatesFromItem(sectionLabel, item, fields) {
@@ -811,11 +867,15 @@
         const value = item[field];
         if (!value) return;
         splitContactLines(value).forEach(line => {
-          const contactValues = extractContactValues(line);
+          const contactValues = extractContactValues(line)
+            .filter(contact => hasClearContactContext(source, contact.label));
           if (!contactValues.length) return;
-          candidates.push({
-            source: contactSourceFromLine(source, line),
-            line: contactValues.join(', '),
+          contactValues.forEach(contact => {
+            candidates.push({
+              source: contactSourceFromLine(source, contact.label),
+              line: contact.value,
+              kind: contact.kind,
+            });
           });
         });
       });
@@ -836,12 +896,14 @@
       return entries.flatMap(entry => {
         const content = entry?.content || '';
         return splitContactLines(content).flatMap(line => {
-          const contactValues = extractContactValues(line);
+          const contactValues = extractContactValues(line)
+            .filter(contact => hasClearContactContext('K Knowledge Base', contact.label));
           if (!contactValues.length) return [];
-          return [{
-            source: contactSourceFromLine('K Knowledge Base', line),
-            line: contactValues.join(', '),
-          }];
+          return contactValues.map(contact => ({
+            source: contactSourceFromLine('K Knowledge Base', contact.label),
+            line: contact.value,
+            kind: contact.kind,
+          }));
         });
       });
     }
@@ -849,7 +911,9 @@
     function dedupeContactCandidates(candidates) {
       const seen = new Set();
       return candidates.filter(candidate => {
-        const key = candidate.line.toLowerCase().replace(/\s+/g, ' ').replace(/[^\w@.:/+ -]/g, '').trim();
+        const key = isPhoneContactValue(candidate.line)
+          ? candidate.line.replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '')
+          : candidate.line.toLowerCase().replace(/\s+/g, ' ').trim();
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -952,7 +1016,7 @@
               <div class="menu-item">
                 <div class="menu-item-info">
                   <div class="contact-source">${escapeHtml(item.source)}</div>
-                  <div class="contact-line">${contactLinkify(item.line)}</div>
+                  <div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(item.kind)}</span>${contactLinkify(item.line)}</div>
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No contact information found yet.</div>'}
