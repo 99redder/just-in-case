@@ -19,19 +19,75 @@ function securityHeaders() {
     'X-Content-Type-Options': 'nosniff',
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     'Pragma': 'no-cache',
   };
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+const DEFAULT_CORS_ALLOWED_ORIGINS = [
+  'https://just-in-case.99redder.workers.dev',
+  'http://localhost:8787',
+  'http://localhost:5173',
+  'http://127.0.0.1:8787',
+  'http://127.0.0.1:5173',
+];
 
-function combinedHeaders(extra = {}) {
-  return { ...securityHeaders(), ...corsHeaders, ...extra };
+function getAllowedCorsOrigins(env) {
+  const configured = String(env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(normalizeOrigin)
+    .filter(Boolean);
+  const appUrl = env.APP_URL ? [normalizeOrigin(env.APP_URL)] : [];
+  return new Set([...DEFAULT_CORS_ALLOWED_ORIGINS, ...appUrl, ...configured]);
+}
+
+function normalizeOrigin(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  try {
+    return new URL(trimmed).origin;
+  } catch (_e) {
+    return trimmed.replace(/\/+$/, '');
+  }
+}
+
+function corsHeadersForRequest(request, env) {
+  const headers = {
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
+  };
+  const origin = request?.headers.get('Origin');
+  if (origin && getAllowedCorsOrigins(env).has(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
+}
+
+function combinedHeaders(request, env, extra = {}) {
+  return {
+    ...securityHeaders(),
+    ...(request ? corsHeadersForRequest(request, env) : {}),
+    ...extra,
+  };
+}
+
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(securityHeaders())) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
+  for (const [key, value] of Object.entries(corsHeadersForRequest(request, env))) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 // CSP for static assets (HTML pages)
@@ -42,9 +98,12 @@ function pageHeaders() {
     'X-Content-Type-Options': 'nosniff',
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     'Pragma': 'no-cache',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; font-src https://cdnjs.cloudflare.com; connect-src 'self' https://just-in-case-askk.99redder.workers.dev; base-uri 'self'; form-action 'self';"
+    'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data:; font-src https://cdnjs.cloudflare.com; connect-src 'self' https://just-in-case-askk.99redder.workers.dev; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
   };
 }
 
@@ -54,37 +113,41 @@ export default {
     const path = url.pathname;
 
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: combinedHeaders() });
+      const origin = request.headers.get('Origin');
+      if (origin && !getAllowedCorsOrigins(env).has(origin)) {
+        return new Response(null, { status: 403, headers: combinedHeaders(request, env) });
+      }
+      return new Response(null, { status: 204, headers: combinedHeaders(request, env) });
     }
 
     // API routes handled by worker
-    if (path === '/api/auth/login'          && request.method === 'POST') return handleLogin(request, env);
-    if (path === '/api/auth/logout'         && request.method === 'POST') return handleLogout(request, env);
-    if (path === '/api/auth/me'             && request.method === 'GET')  return handleMe(request, env);
-    if (path === '/api/auth/reset-request'  && request.method === 'POST') return handleResetRequest(request, env);
-    if (path === '/api/auth/reset-password' && request.method === 'POST') return handleResetPassword(request, env);
+    if (path === '/api/auth/login'          && request.method === 'POST') return withCors(await handleLogin(request, env), request, env);
+    if (path === '/api/auth/logout'         && request.method === 'POST') return withCors(await handleLogout(request, env), request, env);
+    if (path === '/api/auth/me'             && request.method === 'GET')  return withCors(await handleMe(request, env), request, env);
+    if (path === '/api/auth/reset-request'  && request.method === 'POST') return withCors(await handleResetRequest(request, env), request, env);
+    if (path === '/api/auth/reset-password' && request.method === 'POST') return withCors(await handleResetPassword(request, env), request, env);
     if (path.startsWith('/api/data')) {
       const session = await validateSession(request, env);
-      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
-      if (request.method === 'GET')  return handleGetData(request, env);
-      if (request.method === 'POST') return handleSaveData(request, env);
+      if (!session) return withCors(jsonRes({ error: 'Unauthorized' }, 401), request, env);
+      if (request.method === 'GET')  return withCors(await handleGetData(request, env), request, env);
+      if (request.method === 'POST') return withCors(await handleSaveData(request, env), request, env);
     }
     if (path === '/api/knowledge-base' || path === '/api/knowledge-base/entries') {
       const session = await validateSession(request, env);
-      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
-      if (request.method === 'GET')    return handleGetKnowledgeBase(request, env);
-      if (request.method === 'POST')   return handleSaveKnowledgeBase(request, env);
-      if (request.method === 'DELETE') return handleDeleteKnowledgeEntry(request, env);
+      if (!session) return withCors(jsonRes({ error: 'Unauthorized' }, 401), request, env);
+      if (request.method === 'GET')    return withCors(await handleGetKnowledgeBase(request, env), request, env);
+      if (request.method === 'POST')   return withCors(await handleSaveKnowledgeBase(request, env), request, env);
+      if (request.method === 'DELETE') return withCors(await handleDeleteKnowledgeEntry(request, env), request, env);
     }
     if (path === '/api/review/status' && request.method === 'GET') {
       const session = await validateSession(request, env);
-      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
-      return handleReviewStatus(request, env);
+      if (!session) return withCors(jsonRes({ error: 'Unauthorized' }, 401), request, env);
+      return withCors(await handleReviewStatus(request, env), request, env);
     }
     if (path === '/api/review/complete' && request.method === 'POST') {
       const session = await validateSession(request, env);
-      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
-      return handleReviewComplete(request, env, session);
+      if (!session) return withCors(jsonRes({ error: 'Unauthorized' }, 401), request, env);
+      return withCors(await handleReviewComplete(request, env, session), request, env);
     }
 
     // Static assets — serve from assets binding, then inject security headers.
@@ -115,7 +178,7 @@ export default {
       });
     }
 
-    return new Response('Not Found', { status: 404, headers: combinedHeaders() });
+    return new Response('Not Found', { status: 404, headers: combinedHeaders(request, env) });
   },
 
   // Daily log retention sweep, fired by the cron in wrangler.toml.

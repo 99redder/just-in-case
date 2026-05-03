@@ -150,6 +150,21 @@
       color: var(--text-muted);
     }
 
+    .contact-source {
+      display: inline-block;
+      color: var(--text);
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-bottom: 0.2rem;
+    }
+
+    .contact-line {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+
     .menu-item-action {
       display: flex;
       align-items: center;
@@ -700,6 +715,105 @@
       return icons[type] || '💼';
     }
 
+    async function loadKnowledgeBaseEntries() {
+      const token = localStorage.getItem('jic_session');
+      try {
+        const response = await fetch('/api/knowledge-base', {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        });
+        if (!response.ok) throw new Error('Failed to fetch knowledge base');
+        const data = await response.json();
+        return Array.isArray(data.entries) ? data.entries : [];
+      } catch (error) {
+        console.warn('Unable to load knowledge base contacts:', error);
+        return [];
+      }
+    }
+
+    function splitContactLines(text) {
+      return String(text || '')
+        .split(/\r?\n|[•;]/)
+        .map(line => line.replace(/^\s*[-*]\s*/, '').trim())
+        .filter(Boolean);
+    }
+
+    function isLikelyContactLine(line, context = '') {
+      const text = `${context} ${line}`.toLowerCase();
+      const hasPhone = hasPhoneNumber(line);
+      const hasEmail = hasEmailAddress(line);
+      const hasUrl = hasUrlValue(line);
+      const hasContactContext = /\b(contact|call|phone|tel|email|e-mail|agent|attorney|lawyer|advisor|broker|provider|support|help|customer service|representative|spouse|family|doctor|physician|beneficiary|emergency)\b/i.test(text);
+      return hasPhone || hasEmail || (hasUrl && hasContactContext) || hasContactContext;
+    }
+
+    function hasPhoneNumber(text) {
+      return /(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b)/.test(text);
+    }
+
+    function hasEmailAddress(text) {
+      return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text);
+    }
+
+    function hasUrlValue(text) {
+      return /https?:\/\/\S+|www\.\S+/i.test(text);
+    }
+
+    function collectContactCandidatesFromItem(sectionLabel, item, fields) {
+      const title = item.title || item.name || item.account || item.type || 'Entry';
+      const source = `${sectionLabel}: ${title}`;
+      const candidates = [];
+
+      fields.forEach(field => {
+        const value = item[field];
+        if (!value) return;
+        splitContactLines(value).forEach(line => {
+          const isOnlyItemLabel = line === title && !hasPhoneNumber(line) && !hasEmailAddress(line) && !hasUrlValue(line);
+          if (isOnlyItemLabel) return;
+          if (isLikelyContactLine(line, `${sectionLabel} ${title} ${field}`)) {
+            candidates.push({ source, line });
+          }
+        });
+      });
+
+      return candidates;
+    }
+
+    function collectAppContactCandidates(data) {
+      return [
+        ...(data.firststeps || []).flatMap(item => collectContactCandidatesFromItem('First Steps', item, ['title', 'notes', 'details'])),
+        ...(data.insurance || []).flatMap(item => collectContactCandidatesFromItem('Insurance', item, ['type', 'name', 'notes', 'details'])),
+        ...(data.money || []).flatMap(item => collectContactCandidatesFromItem('Money', item, ['account', 'type', 'loginUrl', 'username', 'instructions'])),
+        ...(data.generalinfo || []).flatMap(item => collectContactCandidatesFromItem('General Information', item, ['name', 'details'])),
+      ];
+    }
+
+    function collectKnowledgeBaseContactCandidates(entries) {
+      return entries.flatMap(entry => {
+        const content = entry?.content || '';
+        return splitContactLines(content)
+          .filter(line => isLikelyContactLine(line, 'K Knowledge Base'))
+          .map(line => ({ source: 'K Knowledge Base', line }));
+      });
+    }
+
+    function dedupeContactCandidates(candidates) {
+      const seen = new Set();
+      return candidates.filter(candidate => {
+        const key = candidate.line.toLowerCase().replace(/\s+/g, ' ').replace(/[^\w@.:/+ -]/g, '').trim();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    async function buildContactLinks(data) {
+      const knowledgeBaseEntries = await loadKnowledgeBaseEntries();
+      return dedupeContactCandidates([
+        ...collectAppContactCandidates(data),
+        ...collectKnowledgeBaseContactCandidates(knowledgeBaseEntries),
+      ]);
+    }
+
     // Toggle menu function
     function toggleMenu(sectionId) {
       const content = document.getElementById(sectionId + '-content');
@@ -749,6 +863,7 @@
       // Fetch data
       const loadData = await loadAppData();
       appData = normalizeData(loadData);
+      const contactLinks = await buildContactLinks(appData);
 
       let html = '';
 
@@ -771,6 +886,26 @@
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No first steps added yet.</div>'}
+          </div>
+        </div>
+      `;
+
+      // Contact Link Card
+      html += `
+        <div class="menu-card">
+          <div class="menu-header" onclick="toggleMenu('contact-links')">
+            <h3><span class="menu-icon">☎️</span> Contact Link Card</h3>
+            <span class="chevron">▼</span>
+          </div>
+          <div class="menu-content" id="contact-links-content">
+            ${contactLinks.length > 0 ? contactLinks.map(item => `
+              <div class="menu-item">
+                <div class="menu-item-info">
+                  <div class="contact-source">${escapeHtml(item.source)}</div>
+                  <div class="contact-line">${linkify(item.line)}</div>
+                </div>
+              </div>
+            `).join('') : '<div class="empty-state">No contact information found yet.</div>'}
           </div>
         </div>
       `;
