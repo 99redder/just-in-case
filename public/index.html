@@ -827,12 +827,13 @@
         .slice(0, contactIndex)
         .replace(phoneContactPattern, '')
         .replace(emailContactPattern, '')
-        .split(/\b(?:phone|tel|email|e-mail|fax|contact)\b\s*[:=-]?/i)
+        .split(/\b(?:phone|tel|email|e-mail|fax|contact|call)\b\s*[:=-]?/i)
         .filter(Boolean)
         .pop() || '';
 
       return label
         .replace(/\b(provider|agent|manager|office|main|direct)\b\s*[:=-]?\s*/i, '')
+        .replace(/\bat\s*$/i, '')
         .replace(/[(:=,\-\s]+$/, '')
         .trim();
     }
@@ -884,7 +885,8 @@
     }
 
     function hasClearContactContext(baseSource, label) {
-      return Boolean(label && label.trim()) || !isGenericContactSource(baseSource);
+      const cleanLabel = String(label || '').trim();
+      return (cleanLabel.length > 0 && cleanLabel.length <= 80) || !isGenericContactSource(baseSource);
     }
 
     function contactIcon(kind) {
