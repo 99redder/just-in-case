@@ -837,7 +837,42 @@
         .trim();
     }
 
-    function contactSourceFromLine(baseSource, label) {
+    function propertyContextFromLine(line) {
+      const text = String(line || '').trim();
+      const labeled = text.match(/\b(?:property|rental|address|unit)\b\s*[:=-]\s*(.+)$/i);
+      if (labeled) return cleanPropertyContext(labeled[1]);
+
+      const managedFor = text.match(/\b(?:manager|property manager|managed by|manages|for)\b\s+(?:for\s+)?(.+?)(?:\s*[:=-]|$)/i);
+      if (managedFor && /\b(?:property|rental|unit|apt|apartment|house|condo|drive|dr|road|rd|street|st|avenue|ave|lane|ln|court|ct|place|pl|circle|cir|way|terrace|ter|blvd|boulevard)\b/i.test(managedFor[1])) {
+        return cleanPropertyContext(managedFor[1]);
+      }
+
+      if (/\b(?:property|rental|unit|apt|apartment|house|condo)\b/i.test(text) && text.length <= 80) {
+        return cleanPropertyContext(text);
+      }
+      return '';
+    }
+
+    function cleanPropertyContext(text) {
+      return String(text || '')
+        .replace(phoneContactPattern, '')
+        .replace(emailContactPattern, '')
+        .replace(/\b(?:phone|tel|email|e-mail|fax|contact|manager|property manager)\b\s*[:=-]?.*$/i, '')
+        .replace(/[(:=,\-\s]+$/, '')
+        .trim();
+    }
+
+    function contactSourceFromLine(baseSource, label, propertyContext = '') {
+      const sourceParts = [baseSource];
+      if (propertyContext && !baseSource.toLowerCase().includes(propertyContext.toLowerCase())) {
+        sourceParts.push(propertyContext);
+      }
+      if (label && label.length <= 80 && !sourceParts.join(' ').toLowerCase().includes(label.toLowerCase())) {
+        sourceParts.push(label);
+      }
+      if (sourceParts.length > 1) {
+        return sourceParts.join(': ');
+      }
       if (!label || label.length > 80 || baseSource.toLowerCase().includes(label.toLowerCase())) {
         return baseSource;
       }
@@ -858,29 +893,34 @@
       return '☎️';
     }
 
-    function collectContactCandidatesFromItem(sectionLabel, item, fields) {
-      const title = item.title || item.name || item.account || item.type || 'Entry';
-      const source = `${sectionLabel}: ${title}`;
+    function collectContactCandidatesFromText(source, text) {
       const candidates = [];
+      let activePropertyContext = propertyContextFromLine(source);
 
-      fields.forEach(field => {
-        const value = item[field];
-        if (!value) return;
-        splitContactLines(value).forEach(line => {
-          const contactValues = extractContactValues(line)
-            .filter(contact => hasClearContactContext(source, contact.label));
-          if (!contactValues.length) return;
-          contactValues.forEach(contact => {
-            candidates.push({
-              source: contactSourceFromLine(source, contact.label),
-              line: contact.value,
-              kind: contact.kind,
-            });
+      splitContactLines(text).forEach(line => {
+        const linePropertyContext = propertyContextFromLine(line);
+        const contactValues = extractContactValues(line)
+          .filter(contact => hasClearContactContext(source, contact.label || linePropertyContext || activePropertyContext));
+
+        if (linePropertyContext) activePropertyContext = linePropertyContext;
+        if (!contactValues.length) return;
+
+        contactValues.forEach(contact => {
+          candidates.push({
+            source: contactSourceFromLine(source, contact.label, linePropertyContext || activePropertyContext),
+            line: contact.value,
+            kind: contact.kind,
           });
         });
       });
 
       return candidates;
+    }
+
+    function collectContactCandidatesFromItem(sectionLabel, item, fields) {
+      const title = item.title || item.name || item.account || item.type || 'Entry';
+      const source = `${sectionLabel}: ${title}`;
+      return fields.flatMap(field => collectContactCandidatesFromText(source, item[field]));
     }
 
     function collectAppContactCandidates(data) {
@@ -895,16 +935,7 @@
     function collectKnowledgeBaseContactCandidates(entries) {
       return entries.flatMap(entry => {
         const content = entry?.content || '';
-        return splitContactLines(content).flatMap(line => {
-          const contactValues = extractContactValues(line)
-            .filter(contact => hasClearContactContext('K Knowledge Base', contact.label));
-          if (!contactValues.length) return [];
-          return contactValues.map(contact => ({
-            source: contactSourceFromLine('K Knowledge Base', contact.label),
-            line: contact.value,
-            kind: contact.kind,
-          }));
-        });
+        return collectContactCandidatesFromText('K Knowledge Base', content);
       });
     }
 
