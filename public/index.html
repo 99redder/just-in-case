@@ -848,6 +848,10 @@
         return cleanPropertyContext(managedFor[1]);
       }
 
+      if (/\b(?:drive|dr|road|rd|street|st|avenue|ave|lane|ln|court|ct|place|pl|circle|cir|way|terrace|ter|blvd|boulevard)\b/i.test(text) && text.length <= 100) {
+        return cleanPropertyContext(text);
+      }
+
       if (/\b(?:property(?!\s*manager)|rental|unit|apt|apartment|house|condo)\b/i.test(text) && text.length <= 80) {
         return cleanPropertyContext(text);
       }
@@ -867,6 +871,7 @@
 
     function cleanPropertyContext(text) {
       return String(text || '')
+        .replace(/^\s*\d+\)\s*/, '')
         .replace(phoneContactPattern, '')
         .replace(emailContactPattern, '')
         .replace(/\b(?:phone|tel|email|e-mail|fax|contact|manager|property manager)\b\s*[:=-]?.*$/i, '')
