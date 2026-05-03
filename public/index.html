@@ -832,7 +832,7 @@
         .pop() || '';
 
       return label
-        .replace(/\b(provider|agent|manager|office|main|direct)\b\s*[:=-]?\s*/i, '')
+        .replace(/\b(property manager|provider|agent|manager|office|main|direct)\b\s*[:=-]?\s*/i, '')
         .replace(/\bat\s*$/i, '')
         .replace(/[(:=,\-\s]+$/, '')
         .trim();
@@ -840,18 +840,29 @@
 
     function propertyContextFromLine(line) {
       const text = String(line || '').trim();
-      const labeled = text.match(/\b(?:property|rental|address|unit)\b\s*[:=-]\s*(.+)$/i);
+      const labeled = text.match(/\b(?:property(?!\s*manager)|rental|address|unit)\b\s*[:=-]\s*(.+)$/i);
       if (labeled) return cleanPropertyContext(labeled[1]);
 
-      const managedFor = text.match(/\b(?:manager|property manager|managed by|manages|for)\b\s+(?:for\s+)?(.+?)(?:\s*[:=-]|$)/i);
+      const managedFor = text.match(/\b(?:property manager for|manager for|managed by|manages|for)\b\s+(?:for\s+)?(.+?)(?:\s*[:=-]|$)/i);
       if (managedFor && /\b(?:property|rental|unit|apt|apartment|house|condo|drive|dr|road|rd|street|st|avenue|ave|lane|ln|court|ct|place|pl|circle|cir|way|terrace|ter|blvd|boulevard)\b/i.test(managedFor[1])) {
         return cleanPropertyContext(managedFor[1]);
       }
 
-      if (/\b(?:property|rental|unit|apt|apartment|house|condo)\b/i.test(text) && text.length <= 80) {
+      if (/\b(?:property(?!\s*manager)|rental|unit|apt|apartment|house|condo)\b/i.test(text) && text.length <= 80) {
         return cleanPropertyContext(text);
       }
       return '';
+    }
+
+    function contactNameContextFromLine(line) {
+      const text = String(line || '').trim();
+      const match = text.match(/\b(?:property manager|manager|agent|provider|contact)\b\s*[:=-]\s*(.+)$/i);
+      if (!match) return '';
+      return match[1]
+        .replace(phoneContactPattern, '')
+        .replace(emailContactPattern, '')
+        .replace(/[(:=,\-\s]+$/, '')
+        .trim();
     }
 
     function cleanPropertyContext(text) {
@@ -898,13 +909,17 @@
     function collectContactCandidatesFromText(source, text) {
       const candidates = [];
       let activePropertyContext = propertyContextFromLine(source);
+      let activeContactName = '';
 
       splitContactLines(text).forEach(line => {
         const linePropertyContext = propertyContextFromLine(line);
+        const lineContactName = contactNameContextFromLine(line);
         const contactValues = extractContactValues(line)
+          .map(contact => ({ ...contact, label: contact.label || lineContactName || activeContactName }))
           .filter(contact => hasClearContactContext(source, contact.label || linePropertyContext || activePropertyContext));
 
         if (linePropertyContext) activePropertyContext = linePropertyContext;
+        if (lineContactName) activeContactName = lineContactName;
         if (!contactValues.length) return;
 
         contactValues.forEach(contact => {
