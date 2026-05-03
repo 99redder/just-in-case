@@ -76,6 +76,16 @@ export default {
       if (request.method === 'POST')   return handleSaveKnowledgeBase(request, env);
       if (request.method === 'DELETE') return handleDeleteKnowledgeEntry(request, env);
     }
+    if (path === '/api/review/status' && request.method === 'GET') {
+      const session = await validateSession(request, env);
+      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
+      return handleReviewStatus(request, env);
+    }
+    if (path === '/api/review/complete' && request.method === 'POST') {
+      const session = await validateSession(request, env);
+      if (!session) return jsonRes({ error: 'Unauthorized' }, 401);
+      return handleReviewComplete(request, env, session);
+    }
 
     // Static assets — serve from assets binding, then inject security headers.
     // html_handling = "none" disables Cloudflare's implicit /foo → /foo.html
@@ -676,5 +686,47 @@ async function handleDeleteKnowledgeEntry(request, env) {
   } catch (e) {
     console.error('delete knowledge entry error:', e);
     return jsonRes({ error: 'Failed to delete entry' }, 500);
+  }
+}
+
+// ── Review handlers ───────────────────────────────────────────
+//
+// Single key/value table for app metadata. Currently only stores
+// last_review_at — when the user last finished a full review session.
+
+async function ensureMetadataTable(env) {
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS app_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`).run();
+}
+
+async function handleReviewStatus(request, env) {
+  try {
+    await ensureMetadataTable(env);
+    const row = await env.DB.prepare(
+      'SELECT value FROM app_metadata WHERE key = ?'
+    ).bind('last_review_at').first();
+    const lastReviewAt = row ? Number(row.value) : null;
+    return jsonRes({ ok: true, last_review_at: lastReviewAt });
+  } catch (e) {
+    console.error('review status error:', e);
+    return jsonRes({ error: 'Failed to load review status' }, 500);
+  }
+}
+
+async function handleReviewComplete(request, env, session) {
+  try {
+    await ensureMetadataTable(env);
+    const now = Math.floor(Date.now() / 1000);
+    await env.DB.prepare(
+      `INSERT INTO app_metadata (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).bind('last_review_at', String(now)).run();
+    console.log(`review completed by ${session.email} at ${now}`);
+    return jsonRes({ ok: true, last_review_at: now });
+  } catch (e) {
+    console.error('review complete error:', e);
+    return jsonRes({ error: 'Failed to record review' }, 500);
   }
 }
