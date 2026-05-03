@@ -182,6 +182,50 @@
       font-size: 0.9rem;
     }
 
+    /* ── Review banner + modal ── */
+    .review-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      margin-bottom: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--surface-2);
+      border-radius: var(--radius);
+    }
+    .review-banner .btn { padding: 0.45rem 0.85rem; font-size: 0.85rem; flex-shrink: 0; }
+    .review-last { font-size: 0.8rem; color: var(--text-muted); flex: 1; min-width: 0; }
+    .review-item {
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--surface-2);
+      border-radius: 10px;
+      margin-bottom: 0.6rem;
+      background: var(--bg);
+    }
+    .review-item.reviewed {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.06);
+    }
+    .review-item-section {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+    }
+    .review-item-title {
+      font-size: 0.92rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      word-break: break-word;
+    }
+    .review-item-actions { display: flex; gap: 0.4rem; }
+    .review-item-actions .btn { flex: 1; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+    .review-item.reviewed .review-item-actions { display: none; }
+    .review-item-status { font-size: 0.78rem; color: var(--success); display: none; }
+    .review-item.reviewed .review-item-status { display: block; }
+    .review-progress { font-size: 0.85rem; color: var(--text-muted); margin-right: auto; }
+
     /* ── Modal ── */
     .modal-overlay {
       position: fixed;
@@ -459,8 +503,15 @@
           </div>
         </div>`, 'No general information yet.');
 
-      app.innerHTML = firststepsHtml + insuranceHtml + moneyHtml + checklistHtml + generalinfoHtml;
+      const reviewBannerHtml = `
+        <div class="review-banner" id="review-banner">
+          <button class="btn btn-outline" id="review-open-btn">🔍 Review</button>
+          <span class="review-last" id="review-last">Last reviewed: —</span>
+        </div>`;
+
+      app.innerHTML = reviewBannerHtml + firststepsHtml + insuranceHtml + moneyHtml + checklistHtml + generalinfoHtml;
       app.innerHTML += await knowledgeBaseHtml();
+      refreshReviewBanner();
     }
 
     async function loadKnowledgeBase() {
@@ -734,6 +785,149 @@
       appData[section] = appData[section].filter(i => i.id !== id);
       saveData();
       renderApp();
+    }
+
+    // ── Periodic review ───────────────────────────────────────
+
+    async function refreshReviewBanner() {
+      const labelEl = document.getElementById('review-last');
+      const btnEl = document.getElementById('review-open-btn');
+      if (!labelEl || !btnEl) return;
+      btnEl.onclick = openReviewModal;
+      try {
+        const r = await fetch('/api/review/status', { headers: authHeaders() });
+        const data = await r.json();
+        if (data?.last_review_at) {
+          labelEl.textContent = `Last reviewed: ${formatReviewDate(data.last_review_at)}`;
+        } else {
+          labelEl.textContent = 'Never reviewed';
+        }
+      } catch {
+        labelEl.textContent = '';
+      }
+    }
+
+    function formatReviewDate(unixSeconds) {
+      try {
+        const d = new Date(unixSeconds * 1000);
+        return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      } catch {
+        return '—';
+      }
+    }
+
+    function buildReviewItems() {
+      const items = [];
+      const sectionLabels = {
+        firststeps: 'First Steps',
+        insurance: 'Insurance',
+        money: 'Money',
+        checklist: 'Checklist',
+        generalinfo: 'General Information',
+      };
+      const titleFor = {
+        firststeps: i => i.title || 'Untitled',
+        insurance: i => `${i.type || ''} — ${i.name || ''}`.trim().replace(/^—\s*/, '').replace(/\s*—\s*$/, '') || 'Untitled',
+        money: i => i.account || 'Untitled',
+        checklist: i => i.title || 'Untitled',
+        generalinfo: i => i.name || 'Untitled',
+      };
+      for (const section of Object.keys(sectionLabels)) {
+        const list = Array.isArray(appData[section]) ? appData[section] : [];
+        for (const item of list) {
+          if (!item || item.id == null) continue;
+          items.push({ section, sectionLabel: sectionLabels[section], id: item.id, title: titleFor[section](item) });
+        }
+      }
+      return items;
+    }
+
+    function openReviewModal() {
+      const items = buildReviewItems();
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-header">
+            <h3>Periodic Review</h3>
+            <button class="btn-close" aria-label="Close">✕</button>
+          </div>
+          <div class="modal-body" id="review-body">
+            ${items.length === 0
+              ? '<div class="empty-state">Nothing to review yet. Add some entries first.</div>'
+              : items.map(it => `
+                <div class="review-item" data-section="${h(it.section)}" data-id="${h(String(it.id))}">
+                  <div class="review-item-section">${h(it.sectionLabel)}</div>
+                  <div class="review-item-title">${h(it.title)}</div>
+                  <div class="review-item-actions">
+                    <button class="btn btn-primary" data-action="valid">Still Valid</button>
+                    <button class="btn btn-outline" data-action="update">Update</button>
+                  </div>
+                  <div class="review-item-status">✓ Confirmed</div>
+                </div>
+              `).join('')}
+          </div>
+          <div class="modal-footer">
+            <span class="review-progress" id="review-progress">${items.length === 0 ? '' : `0 / ${items.length} confirmed`}</span>
+            <button class="btn btn-outline" id="review-cancel-btn">Cancel</button>
+            <button class="btn btn-primary" id="review-complete-btn" disabled>Complete Review</button>
+          </div>
+        </div>`;
+
+      function close() { if (overlay.parentNode) document.body.removeChild(overlay); }
+      overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+      overlay.querySelector('.btn-close').addEventListener('click', close);
+      overlay.querySelector('#review-cancel-btn').addEventListener('click', close);
+
+      const total = items.length;
+      const reviewedSet = new Set();
+      const progressEl = overlay.querySelector('#review-progress');
+      const completeBtn = overlay.querySelector('#review-complete-btn');
+
+      overlay.querySelector('#review-body').addEventListener('click', e => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const card = btn.closest('.review-item');
+        if (!card) return;
+        const action = btn.dataset.action;
+        const section = card.dataset.section;
+        const id = isNaN(Number(card.dataset.id)) ? card.dataset.id : Number(card.dataset.id);
+        if (action === 'update') {
+          close();
+          openModal(section, id);
+          return;
+        }
+        if (action === 'valid') {
+          const key = `${section}:${id}`;
+          if (!reviewedSet.has(key)) {
+            reviewedSet.add(key);
+            card.classList.add('reviewed');
+            if (progressEl) progressEl.textContent = `${reviewedSet.size} / ${total} confirmed`;
+            if (completeBtn && reviewedSet.size === total) completeBtn.disabled = false;
+          }
+        }
+      });
+
+      completeBtn.addEventListener('click', async () => {
+        completeBtn.disabled = true;
+        completeBtn.textContent = 'Saving…';
+        try {
+          const r = await fetch('/api/review/complete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          });
+          if (!r.ok) throw new Error();
+          showToast('Review saved', 'success');
+          close();
+          refreshReviewBanner();
+        } catch {
+          showToast('Failed to save review', 'error');
+          completeBtn.disabled = false;
+          completeBtn.textContent = 'Complete Review';
+        }
+      });
+
+      document.body.appendChild(overlay);
     }
 
     // ── Helpers ───────────────────────────────────────────────

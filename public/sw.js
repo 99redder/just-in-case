@@ -1,6 +1,6 @@
 // Increment this version string whenever you deploy new code.
 // The browser detects the change, installs the new SW, and clears old caches.
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const CACHE   = `jic-${VERSION}`;
 
 // Activate immediately — don't wait for old tabs to close
