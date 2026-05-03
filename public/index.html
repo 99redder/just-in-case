@@ -187,6 +187,13 @@
       font-size: 0.82rem;
     }
 
+    .contact-kind {
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
     .contact-line a {
       color: #34d399;
       font-weight: 700;
@@ -917,6 +924,12 @@
       return '☎️';
     }
 
+    function contactKindLabel(kind) {
+      if (kind === 'fax') return 'Fax';
+      if (kind === 'email') return 'Email';
+      return 'Phone';
+    }
+
     function contactDisplayParts(source) {
       const sourceText = String(source || '').trim();
       const kbPrefix = 'K Knowledge Base: ';
@@ -1098,7 +1111,7 @@
               <div class="menu-item">
                 <div class="menu-item-info">
                   ${renderContactHeader(item.source)}
-                  <div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(item.kind)}</span>${contactLinkify(item.line)}</div>
+                  <div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(item.kind)}</span><span class="contact-kind">(${contactKindLabel(item.kind)})</span>${contactLinkify(item.line)}</div>
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No contact information found yet.</div>'}
