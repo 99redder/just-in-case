@@ -9,6 +9,8 @@ function getAllowedEmails(env) {
 
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_FAIL_WINDOW_SECS = 15 * 60;
+const RESET_REQUEST_LIMIT = 5;
+const RESET_REQUEST_WINDOW_SECS = 60 * 60;
 
 // ── #1: Security headers (HSTS, X-Frame-Options, CSP, no-cache, etc.) ──
 
@@ -197,6 +199,7 @@ async function runRetentionSweep(env) {
   const sweeps = [
     ['askk_log',       now - 90 * day],
     ['login_attempts', now - 30 * day],
+    ['reset_attempts', now - 30 * day],
     ['save_log',       now -  1 * day],
   ];
   for (const [table, cutoff] of sweeps) {
@@ -230,7 +233,7 @@ async function handleLogin(request, env) {
     const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(norm).first();
     if (!user || !user.password_hash) {
       await recordLoginAttempt(env, norm, false);
-      return jsonRes({ error: 'No password set for this account. Use "Forgot Password" to set one.' }, 401);
+      return jsonRes({ error: 'Invalid email or password' }, 401);
     }
 
     if (!(await verifyPassword(password, user.password_hash))) {
@@ -304,6 +307,10 @@ async function handleResetRequest(request, env) {
     const norm = email.toLowerCase().trim();
     // Always return the same message to prevent email enumeration
     const ok = { success: true, message: 'If that address is registered, a reset link is on its way.' };
+
+    if (await isResetRequestLocked(env, request, norm)) return jsonRes(ok);
+    await recordResetRequest(env, request, norm);
+
     if (!getAllowedEmails(env).includes(norm)) return jsonRes(ok);
 
     // Replace any existing token for this email
@@ -322,6 +329,36 @@ async function handleResetRequest(request, env) {
   } catch (e) {
     console.error('reset-request error:', e);
     return jsonRes({ error: 'Failed to process request' }, 500);
+  }
+}
+
+function getClientIp(request) {
+  return request.headers.get('CF-Connecting-IP')
+    || request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+    || 'unknown';
+}
+
+async function isResetRequestLocked(env, request, email) {
+  try {
+    const cutoff = Math.floor(Date.now() / 1000) - RESET_REQUEST_WINDOW_SECS;
+    const ip = getClientIp(request);
+    const row = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM reset_attempts WHERE ts > ? AND (email = ? OR ip = ?)'
+    ).bind(cutoff, email, ip).first();
+    return row && Number(row.n) >= RESET_REQUEST_LIMIT;
+  } catch (e) {
+    console.error('reset lock check failed:', e);
+    return true; // fail closed to avoid reset-email abuse on DB hiccups
+  }
+}
+
+async function recordResetRequest(env, request, email) {
+  try {
+    await env.DB.prepare(
+      'INSERT INTO reset_attempts (email, ip, ts) VALUES (?, ?, ?)'
+    ).bind(email, getClientIp(request), Math.floor(Date.now() / 1000)).run();
+  } catch (e) {
+    console.error('reset_attempts insert failed:', e);
   }
 }
 
@@ -436,9 +473,7 @@ async function handleSaveData(request, env) {
 // ── #2: Data-at-rest encryption ─────────────────────────────────
 
 async function encryptData(data, env) {
-  const keyHex = env.DATA_ENCRYPTION_KEY;
-  if (!keyHex) return JSON.stringify(data); // fallback — warn in logs
-  const keyBytes = hexToBytes(keyHex);
+  const keyBytes = getEncryptionKeyBytes(env);
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt']);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(JSON.stringify(data));
@@ -447,8 +482,6 @@ async function encryptData(data, env) {
 }
 
 async function decryptData(encryptedStr, env) {
-  const keyHex = env.DATA_ENCRYPTION_KEY;
-
   // Detect our encrypted format: exactly two base64 parts separated by ':'.
   // Anything else (including legacy plaintext JSON) falls through so a freshly
   // turned-on encryption key doesn't black-hole the existing row before the
@@ -459,18 +492,21 @@ async function decryptData(encryptedStr, env) {
   if (!looksEncrypted) {
     try { return JSON.parse(encryptedStr); } catch { return {}; }
   }
-  if (!keyHex) {
-    // Encrypted in DB but no key configured — can't decrypt.
-    return {};
-  }
-
-  const keyBytes = hexToBytes(keyHex);
+  const keyBytes = getEncryptionKeyBytes(env);
   const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
   const [ivPart, ctPart] = encryptedStr.split(':');
   const iv = b64ToUint8(ivPart);
   const ciphertext = b64ToUint8(ctPart);
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
   return JSON.parse(new TextDecoder().decode(decrypted));
+}
+
+function getEncryptionKeyBytes(env) {
+  const keyHex = String(env.DATA_ENCRYPTION_KEY || '').trim();
+  if (!/^[0-9a-f]{64}$/i.test(keyHex)) {
+    throw new Error('DATA_ENCRYPTION_KEY must be configured as a 64-character hex secret');
+  }
+  return hexToBytes(keyHex);
 }
 
 function hexToBytes(hex) {
@@ -640,6 +676,17 @@ async function ensureAuthTables(env) {
 
   await env.DB.prepare(
     `CREATE INDEX IF NOT EXISTS login_attempts_email_ts ON login_attempts (email, ts)`
+  ).run();
+
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS reset_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    ip TEXT NOT NULL,
+    ts INTEGER NOT NULL
+  )`).run();
+
+  await env.DB.prepare(
+    `CREATE INDEX IF NOT EXISTS reset_attempts_email_ip_ts ON reset_attempts (email, ip, ts)`
   ).run();
 
   // #5: Rate limit tracking table

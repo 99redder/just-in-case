@@ -17,9 +17,8 @@ html_handling = "none"
 # Find it at: https://dash.cloudflare.com -> Workers & Pages -> just-in-case -> Triggers
 APP_URL    = "https://just-in-case.99redder.workers.dev"
 EMAIL_FROM = "noreply@easternshore.ai"
-# Data-at-rest encryption key (64-char hex = 32 bytes = AES-256).
-# Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-DATA_ENCRYPTION_KEY = ""
+# Data-at-rest encryption key is required as a secret, not a plaintext var:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" | npx wrangler secret put DATA_ENCRYPTION_KEY
 
 [[d1_databases]]
 binding       = "DB"

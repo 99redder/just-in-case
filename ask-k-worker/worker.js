@@ -120,20 +120,26 @@ Do NOT echo full account numbers, control numbers, policy numbers, or any other 
 
 function buildCorsHeaders(request) {
   const origin = request.headers.get('Origin') || '';
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    'Access-Control-Allow-Origin': allow,
+  const headers = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Vary': 'Origin',
   };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+  return headers;
 }
 
 export default {
   async fetch(request, env) {
     const cors = buildCorsHeaders(request);
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: cors });
+      const origin = request.headers.get('Origin') || '';
+      if (origin && !ALLOWED_ORIGINS.includes(origin)) {
+        return new Response(null, { status: 403, headers: cors });
+      }
+      return new Response(null, { status: 204, headers: cors });
     }
 
     const url = new URL(request.url);
@@ -436,8 +442,6 @@ async function logAskK(env, email, question, reply, error, status) {
 }
 
 async function decryptData(encryptedStr, env) {
-  const keyHex = env.DATA_ENCRYPTION_KEY;
-
   // Detect our encrypted format: exactly two base64 parts separated by ':'.
   // Anything else (including legacy plaintext JSON) falls through so a freshly
   // turned-on encryption key doesn't black-hole the existing row before the
@@ -448,22 +452,26 @@ async function decryptData(encryptedStr, env) {
   if (!looksEncrypted) {
     try { return JSON.parse(encryptedStr); } catch { return {}; }
   }
-  if (!keyHex) {
-    // Encrypted in DB but no key configured — can't decrypt.
-    return {};
-  }
-
   try {
-    const keyBytes = hexToBytes(keyHex);
+    const keyBytes = getEncryptionKeyBytes(env);
     const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']);
     const [ivPart, ctPart] = encryptedStr.split(':');
     const iv = b64ToUint8(ivPart);
     const ciphertext = b64ToUint8(ctPart);
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
     return JSON.parse(new TextDecoder().decode(decrypted));
-  } catch {
-    return {};
+  } catch (e) {
+    console.error('app_data decrypt failed:', e);
+    throw e;
   }
+}
+
+function getEncryptionKeyBytes(env) {
+  const keyHex = String(env.DATA_ENCRYPTION_KEY || '').trim();
+  if (!/^[0-9a-f]{64}$/i.test(keyHex)) {
+    throw new Error('DATA_ENCRYPTION_KEY must be configured as a 64-character hex secret');
+  }
+  return hexToBytes(keyHex);
 }
 
 function hexToBytes(hex) {
