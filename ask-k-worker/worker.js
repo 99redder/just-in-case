@@ -471,21 +471,28 @@ async function withNetWorthAccounts(appData, env) {
   const norm = (s) => String(s || '').trim().toLowerCase();
   const manualByName = new Map(manual.map(m => [norm(m.account), m]));
   const consumed = new Set();
+  const noteByKey = new Map(
+    (Array.isArray(data.moneyNotes) ? data.moneyNotes : [])
+      .map(n => [String(n?.key || ''), String(n?.note || '')])
+      .filter(([k]) => k)
+  );
   const fmt = (v) => {
     const n = Number(v);
     return Number.isFinite(n) ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '$0.00';
   };
   const synced = accounts.map(a => {
+    const id = `nw:${a.key}`;
     const match = manualByName.get(norm(a.name));
     if (match) consumed.add(norm(a.name));
     return {
-      id: `nw:${a.key}`,
+      id,
       account: a.name,
       type: a.type || 'Bank',
       balance: fmt(a.balance),
       loginUrl: match?.loginUrl || '',
       username: match?.username || '',
       instructions: match?.instructions || '',
+      note: noteByKey.get(id) || '',
       synced: true,
       source: 'Net Worth',
     };

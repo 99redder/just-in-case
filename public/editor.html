@@ -374,7 +374,7 @@
   </div>
 
   <script>
-    let appData = { firststeps: [], insurance: [], money: [], checklist: [], generalinfo: [] };
+    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [], moneyNotes: [] };
     // Read-only accounts mirrored live from the rentals app's Net Worth. Shown
     // in the money section but not editable and never saved back.
     let syncedMoney = [];
@@ -469,6 +469,18 @@
           </div>
         </div>`, 'No insurance policies yet.');
 
+      const contactsHtml = renderSection('Contacts', '☎️', 'contacts', item => `
+        <div class="data-item">
+          <div class="data-item-title">☎️ ${h(item.name || 'Unnamed')}${item.relationship ? ` — ${h(item.relationship)}` : ''}</div>
+          ${item.phone ? `<div class="data-item-meta">📞 ${h(item.phone)}</div>` : ''}
+          ${item.email ? `<div class="data-item-meta">✉️ ${h(item.email)}</div>` : ''}
+          ${item.notes ? `<div class="data-item-meta">${h(item.notes)}</div>` : ''}
+          <div class="item-actions">
+            <button class="btn btn-outline" onclick="openModal('contacts',${item.id})">Edit</button>
+            <button class="btn btn-danger"  onclick="deleteItem('contacts',${item.id})">Delete</button>
+          </div>
+        </div>`, 'No contacts yet.');
+
       const moneyHtml = renderSection('Where We Have Money', '💰', 'money', item => `
         <div class="data-item">
           <div class="data-item-title">${acctIcon(item.type)} ${h(item.account)}</div>
@@ -512,7 +524,7 @@
           <span class="review-last" id="review-last">Last reviewed: —</span>
         </div>`;
 
-      app.innerHTML = reviewBannerHtml + firststepsHtml + insuranceHtml + moneyHtml + checklistHtml + generalinfoHtml;
+      app.innerHTML = reviewBannerHtml + firststepsHtml + contactsHtml + insuranceHtml + moneyHtml + checklistHtml + generalinfoHtml;
       app.innerHTML += await knowledgeBaseHtml();
       refreshReviewBanner();
     }
@@ -699,6 +711,28 @@
           <textarea id="f-instructions" class="form-control" style="min-height:60px">${esc(v('instructions'))}</textarea>
         </div>`;
 
+      if (section === 'contacts') return `
+        <div class="form-group">
+          <label>Name</label>
+          <input id="f-name" class="form-control" type="text" value="${esc(v('name'))}" placeholder="e.g. John Smith">
+        </div>
+        <div class="form-group">
+          <label>Relationship / Role</label>
+          <input id="f-relationship" class="form-control" type="text" value="${esc(v('relationship'))}" placeholder="e.g. Attorney, Brother, Financial Advisor">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input id="f-phone" class="form-control" type="tel" value="${esc(v('phone'))}" placeholder="e.g. 555-123-4567">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input id="f-email" class="form-control" type="email" value="${esc(v('email'))}" placeholder="e.g. john@example.com">
+        </div>
+        <div class="form-group">
+          <label>Notes</label>
+          <textarea id="f-notes" class="form-control" style="min-height:60px">${esc(v('notes'))}</textarea>
+        </div>`;
+
       if (section === 'checklist') return `
         <div class="form-group">
           <label>Title</label>
@@ -738,6 +772,7 @@
       let changed = false;
       for (const section of Object.keys(data)) {
         if (!Array.isArray(data[section])) continue;
+        if (section === 'moneyNotes') continue; // keyed by account id, no numeric id
         const seen = new Set();
         const maxId = Math.max(0, ...data[section].map(i => Number(i.id) || 0));
         let next = Math.max(Date.now(), maxId + 1);
@@ -764,6 +799,8 @@
         item = { id: id ?? Date.now(), title: val('f-title'), details: val('f-details'), notes: val('f-notes') };
       } else if (section === 'insurance') {
         item = { id: id ?? Date.now(), type: val('f-type'), name: val('f-name'), details: val('f-details'), notes: val('f-notes') };
+      } else if (section === 'contacts') {
+        item = { id: id ?? Date.now(), name: val('f-name'), relationship: val('f-relationship'), phone: val('f-phone'), email: val('f-email'), notes: val('f-notes') };
       } else if (section === 'money') {
         item = { id: id ?? Date.now(), account: val('f-account'), type: val('f-type'), balance: val('f-balance'), username: val('f-username'), loginUrl: val('f-loginUrl'), instructions: val('f-instructions') };
       } else if (section === 'checklist') {
@@ -824,6 +861,7 @@
       const sectionLabels = {
         firststeps: 'First Steps',
         insurance: 'Insurance',
+        contacts: 'Contacts',
         money: 'Money',
         checklist: 'Checklist',
         generalinfo: 'General Information',
@@ -831,6 +869,7 @@
       const titleFor = {
         firststeps: i => i.title || 'Untitled',
         insurance: i => `${i.type || ''} — ${i.name || ''}`.trim().replace(/^—\s*/, '').replace(/\s*—\s*$/, '') || 'Untitled',
+        contacts: i => i.name || 'Untitled',
         money: i => i.account || 'Untitled',
         checklist: i => i.title || 'Untitled',
         generalinfo: i => i.name || 'Untitled',
@@ -936,7 +975,7 @@
     // ── Helpers ───────────────────────────────────────────────
 
     function sectionLabel(s) {
-      return { firststeps: 'First Step', insurance: 'Insurance Policy', money: 'Account', checklist: 'Checklist Item', generalinfo: 'General Info Item' }[s] || s;
+      return { firststeps: 'First Step', insurance: 'Insurance Policy', contacts: 'Contact', money: 'Account', checklist: 'Checklist Item', generalinfo: 'General Info Item' }[s] || s;
     }
 
     function typeIcon(t) {
@@ -959,14 +998,37 @@
           <div class="data-item-meta">${h(item.type)} • ${h(item.balance)}</div>
           ${item.username ? `<div class="data-item-meta">Username: ${h(item.username)}</div>` : ''}
           ${item.instructions ? `<div class="data-item-meta">Instructions: ${h(item.instructions)}</div>` : ''}
+          <label class="form-label" style="display:block;margin-top:0.5rem;font-size:0.75rem;color:var(--text-muted);">Note for this account (Just In Case only — not shown in Net Worth)</label>
+          <textarea id="note-${h(item.id)}" class="form-control" rows="2" placeholder="Leave a note for your wife about this account…">${h(item.note || '')}</textarea>
+          <div class="item-actions">
+            <button class="btn btn-outline" onclick="saveMoneyNote('${h(item.id)}')">Save Note</button>
+          </div>
         </div>`).join('');
       return `
         <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--surface-2);">
           <div class="data-item-meta" style="margin-bottom:0.5rem;">
-            🔗 Live from Net Worth (read-only) — edit these in the rentals app.
+            🔗 Live from Net Worth — balances are read-only (edit them in the rentals app). Notes below are saved in Just In Case only.
           </div>
           ${items}
         </div>`;
+    }
+
+    // Save a Just-In-Case-only note for a synced Net Worth account. Stored in
+    // appData.moneyNotes keyed by the synced entry id; never touches Net Worth.
+    async function saveMoneyNote(id) {
+      const ta = document.getElementById('note-' + id);
+      const note = (ta?.value || '').trim();
+      if (!Array.isArray(appData.moneyNotes)) appData.moneyNotes = [];
+      const idx = appData.moneyNotes.findIndex(n => n.key === id);
+      if (note) {
+        if (idx >= 0) appData.moneyNotes[idx].note = note;
+        else appData.moneyNotes.push({ key: id, note });
+      } else if (idx >= 0) {
+        appData.moneyNotes.splice(idx, 1);
+      }
+      const s = syncedMoney.find(m => m.id === id);
+      if (s) s.note = note;
+      await saveData();
     }
 
 
@@ -1012,9 +1074,11 @@
         appData = {
           firststeps: Array.isArray(loaded?.firststeps) ? loaded.firststeps : [],
           insurance:  Array.isArray(loaded?.insurance)  ? loaded.insurance  : [],
+          contacts:   Array.isArray(loaded?.contacts)   ? loaded.contacts   : [],
           money:      allMoney.filter(m => !m?.synced),
           checklist:  Array.isArray(loaded?.checklist)  ? loaded.checklist  : [],
           generalinfo: Array.isArray(loaded?.generalinfo) ? loaded.generalinfo : [],
+          moneyNotes: Array.isArray(loaded?.moneyNotes) ? loaded.moneyNotes : [],
         };
         if (fixDuplicateIds(appData)) await saveData();
       } catch (e) { /* use empty defaults */ }

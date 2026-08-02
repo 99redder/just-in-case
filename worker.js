@@ -439,17 +439,28 @@ async function withNetWorthAccounts(appData, env) {
   const manualByName = new Map(manual.map(m => [norm(m.account), m]));
   const consumed = new Set();
 
+  // Just-In-Case-only notes keyed by the synced entry id (nw:<key>). These are
+  // stored here, attached read-only to the live entry, and never sent back to
+  // Net Worth.
+  const noteByKey = new Map(
+    (Array.isArray(data.moneyNotes) ? data.moneyNotes : [])
+      .map(n => [String(n?.key || ''), String(n?.note || '')])
+      .filter(([k]) => k)
+  );
+
   const synced = accounts.map(a => {
+    const id = `nw:${a.key}`;
     const match = manualByName.get(norm(a.name));
     if (match) consumed.add(norm(a.name));
     return {
-      id: `nw:${a.key}`,
+      id,
       account: a.name,
       type: a.type || 'Bank',
       balance: formatMoneyAmount(a.balance),
       loginUrl: match?.loginUrl || '',
       username: match?.username || '',
       instructions: match?.instructions || '',
+      note: noteByKey.get(id) || '',
       synced: true,
       source: 'Net Worth',
     };
@@ -486,7 +497,7 @@ async function handleSaveData(request, env) {
     }
 
     // Validate expected top-level keys
-    const allowedKeys = ['firststeps', 'insurance', 'money', 'checklist', 'generalinfo'];
+    const allowedKeys = ['firststeps', 'insurance', 'contacts', 'money', 'checklist', 'generalinfo', 'moneyNotes'];
     for (const key of Object.keys(body)) {
       if (!allowedKeys.includes(key)) {
         return jsonRes({ error: `Unexpected key: ${key}` }, 400);
@@ -502,7 +513,16 @@ async function handleSaveData(request, env) {
     if (Array.isArray(body.money)) {
       body.money = body.money
         .filter(m => m && typeof m === 'object' && !m.synced && !(typeof m.id === 'string' && m.id.startsWith('nw:')))
-        .map(({ synced, source, ...keep }) => keep);
+        .map(({ synced, source, note, ...keep }) => keep);
+    }
+
+    // Just-In-Case-only notes for synced Net Worth entries. Stored here (keyed
+    // by the synced entry id), never sent to Net Worth. Drop empties.
+    if (Array.isArray(body.moneyNotes)) {
+      body.moneyNotes = body.moneyNotes
+        .filter(n => n && typeof n === 'object' && typeof n.key === 'string' && n.key)
+        .map(n => ({ key: String(n.key).slice(0, 200), note: String(n.note || '').trim().slice(0, 2000) }))
+        .filter(n => n.note);
     }
 
     // #5: Enforce payload size limit (1MB)
@@ -807,6 +827,8 @@ function defaultAppData() {
       { id: 8, text: 'Check LLC compliance requirements', completed: false }
     ],
     generalinfo: [],
+    contacts: [],
+    moneyNotes: [],
   };
 }
 

@@ -935,12 +935,14 @@
     function contactIcon(kind) {
       if (kind === 'fax') return '📠';
       if (kind === 'email') return '✉️';
+      if (kind === 'note') return '📝';
       return '☎️';
     }
 
     function contactKindLabel(kind) {
       if (kind === 'fax') return 'Fax';
       if (kind === 'email') return 'Email';
+      if (kind === 'note') return 'Note';
       return 'Phone';
     }
 
@@ -1001,8 +1003,24 @@
       return fields.flatMap(field => collectContactCandidatesFromText(source, item[field]));
     }
 
+    // Contacts managed directly in the editor. Emitted first so they win the
+    // de-dupe over any phone/email scraped from free-text fields.
+    function collectStructuredContactCandidates(contacts) {
+      return (contacts || []).flatMap(contact => {
+        const name = String(contact?.name || '').trim();
+        const rel = String(contact?.relationship || '').trim();
+        const source = name ? (rel ? `${name} (${rel})` : name) : (rel || 'Contact');
+        const out = [];
+        if (contact?.phone) out.push({ source, line: String(contact.phone).trim(), kind: 'phone' });
+        if (contact?.email) out.push({ source, line: String(contact.email).trim(), kind: 'email' });
+        if (contact?.notes) out.push({ source, line: String(contact.notes).trim(), kind: 'note' });
+        return out;
+      });
+    }
+
     function collectAppContactCandidates(data) {
       return [
+        ...collectStructuredContactCandidates(data.contacts),
         ...(data.firststeps || []).flatMap(item => collectContactCandidatesFromItem('First Steps', item, ['notes', 'details'])),
         ...(data.insurance || []).flatMap(item => collectContactCandidatesFromItem('Insurance', item, ['notes', 'details'])),
         ...(data.money || []).flatMap(item => collectContactCandidatesFromItem('Money', item, ['instructions'])),
@@ -1047,7 +1065,7 @@
 
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
-    let appData = { firststeps: [], insurance: [], money: [], checklist: [], generalinfo: [] };
+    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [] };
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
@@ -1060,6 +1078,7 @@
         loginUrl: item?.loginUrl || '#',
         username: item?.username || '',
         instructions: item?.instructions || '',
+        note: item?.note || '',
         synced: item?.synced === true,
         source: item?.source || ''
       });
@@ -1067,6 +1086,7 @@
       return {
         firststeps: Array.isArray(data?.firststeps) ? data.firststeps : [],
         insurance: Array.isArray(data?.insurance) ? data.insurance : [],
+        contacts: Array.isArray(data?.contacts) ? data.contacts : [],
         money: Array.isArray(data?.money) ? data.money.map(normalizeMoneyItem) : [],
         checklist: Array.isArray(data?.checklist) ? data.checklist : [],
         generalinfo: Array.isArray(data?.generalinfo) ? data.generalinfo : []
@@ -1175,6 +1195,7 @@
                     <strong>Balance:</strong> ${escapeHtml(item.balance)}
                     ${item.username ? '<br><strong>Username:</strong> ' + escapeHtml(item.username) : ''}
                     ${item.instructions ? '<br><strong>Instructions:</strong> ' + escapeHtml(item.instructions) : ''}
+                    ${item.note ? '<br><strong>Note:</strong> ' + escapeHtml(item.note) : ''}
                     ${item.loginUrl && item.loginUrl !== '#' ? '<br><a href="' + escapeHtml(item.loginUrl) + '" target="_blank" rel="noopener">Open site</a>' : ''}
                   </div>
                 </div>
