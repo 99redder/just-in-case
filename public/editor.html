@@ -1043,41 +1043,49 @@
     // One-time importer: materialize the phone/email contacts the Contact Link
     // Card scrapes (from free-text fields + K's knowledge base) into first-class
     // editable Contacts. De-dupes against existing contacts by phone/email.
+    async function fetchKbEntries() {
+      try {
+        const r = await fetch('/api/knowledge-base', { headers: authHeaders() });
+        if (r.ok) { const j = await r.json(); return Array.isArray(j?.entries) ? j.entries : []; }
+      } catch (e) { /* KB optional */ }
+      return [];
+    }
+
+    // Merge contacts scraped from free-text fields + K's knowledge base into the
+    // Contacts section (the single source of truth). Idempotent: skips ones
+    // already present (by phone/email) and ones the user explicitly deleted
+    // (contactsSuppressed). Returns how many were added. Mutates appData only.
+    function mergeScrapedContacts(data, kb) {
+      if (!window.JICContacts) return 0;
+      const scraped = window.JICContacts.contactsFromCandidates(
+        window.JICContacts.scrapeContactCandidates(data, kb)
+      );
+      if (!Array.isArray(appData.contacts)) appData.contacts = [];
+      const digits = s => String(s || '').replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '');
+      const emailKey = s => String(s || '').trim().toLowerCase();
+      const haveP = new Set(appData.contacts.map(c => digits(c.phone)).filter(Boolean));
+      const haveE = new Set(appData.contacts.map(c => emailKey(c.email)).filter(Boolean));
+      const suppressed = new Set((appData.contactsSuppressed || []).map(String));
+
+      let added = 0;
+      let nextId = Date.now();
+      for (const c of scraped) {
+        const pk = digits(c.phone);
+        const ek = emailKey(c.email);
+        if ((pk && haveP.has(pk)) || (ek && haveE.has(ek))) continue;
+        if ((pk && suppressed.has(pk)) || (ek && suppressed.has(ek))) continue;
+        appData.contacts.push({ id: nextId++, name: c.name, relationship: c.relationship, phone: c.phone, email: c.email, notes: c.notes });
+        if (pk) haveP.add(pk);
+        if (ek) haveE.add(ek);
+        added++;
+      }
+      return added;
+    }
+
     async function importContactsFromData() {
       if (!window.JICContacts) { showToast('Import tool not loaded', 'error'); return; }
       try {
-        const data = await loadData();
-        let kb = [];
-        try {
-          const r = await fetch('/api/knowledge-base', { headers: authHeaders() });
-          if (r.ok) { const j = await r.json(); kb = Array.isArray(j?.entries) ? j.entries : []; }
-        } catch (e) { /* KB optional */ }
-
-        const scraped = window.JICContacts.contactsFromCandidates(
-          window.JICContacts.scrapeContactCandidates(data, kb)
-        );
-
-        if (!Array.isArray(appData.contacts)) appData.contacts = [];
-        const digits = s => String(s || '').replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '');
-        const emailKey = s => String(s || '').trim().toLowerCase();
-        const haveP = new Set(appData.contacts.map(c => digits(c.phone)).filter(Boolean));
-        const haveE = new Set(appData.contacts.map(c => emailKey(c.email)).filter(Boolean));
-        // Don't resurrect contacts the user explicitly deleted.
-        const suppressed = new Set((appData.contactsSuppressed || []).map(String));
-
-        let added = 0;
-        let nextId = Date.now();
-        for (const c of scraped) {
-          const pk = digits(c.phone);
-          const ek = emailKey(c.email);
-          if ((pk && haveP.has(pk)) || (ek && haveE.has(ek))) continue;
-          if ((pk && suppressed.has(pk)) || (ek && suppressed.has(ek))) continue;
-          appData.contacts.push({ id: nextId++, name: c.name, relationship: c.relationship, phone: c.phone, email: c.email, notes: c.notes });
-          if (pk) haveP.add(pk);
-          if (ek) haveE.add(ek);
-          added++;
-        }
-
+        const added = mergeScrapedContacts(await loadData(), await fetchKbEntries());
         if (added === 0) { showToast('No new contacts to import', 'success'); return; }
         await saveData();
         await renderApp();
@@ -1156,6 +1164,17 @@
           contactsSuppressed: Array.isArray(loaded?.contactsSuppressed) ? loaded.contactsSuppressed : [],
         };
         if (fixDuplicateIds(appData)) await saveData();
+
+        // One-time (per device) migration: pull any contacts still living only
+        // in free text / K's knowledge base into the Contacts section, so it's
+        // the single source the card reads. Idempotent — safe if it re-runs.
+        if (!localStorage.getItem('jic_contacts_migrated')) {
+          try {
+            const added = mergeScrapedContacts(loaded, await fetchKbEntries());
+            if (added > 0) await saveData();
+          } catch (e) { /* non-fatal */ }
+          localStorage.setItem('jic_contacts_migrated', '1');
+        }
       } catch (e) { /* use empty defaults */ }
 
       document.body.style.display = '';

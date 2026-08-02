@@ -1051,22 +1051,11 @@
       });
     }
 
+    // Single source of truth: the Contacts section managed in the editor. The
+    // card no longer scrapes free-text fields or K's knowledge base — the
+    // editor migrates those into Contacts so everything lives in one place.
     async function buildContactLinks(data) {
-      const knowledgeBaseEntries = await loadKnowledgeBaseEntries();
-      const deduped = dedupeContactCandidates([
-        ...collectAppContactCandidates(data),
-        ...collectKnowledgeBaseContactCandidates(knowledgeBaseEntries),
-      ]);
-      // Hide contacts the user deleted in the editor, even though the same
-      // number/email may still be scrapable from free text. A key currently
-      // kept as a structured contact is never suppressed.
-      const suppressed = new Set((data.contactsSuppressed || []).map(String).filter(Boolean));
-      if (suppressed.size === 0) return deduped;
-      const kept = new Set(collectStructuredContactCandidates(data.contacts).map(c => contactCandidateKey(c.line)));
-      return deduped.filter(c => {
-        const k = contactCandidateKey(c.line);
-        return !(suppressed.has(k) && !kept.has(k));
-      });
+      return dedupeContactCandidates(collectStructuredContactCandidates(data.contacts));
     }
 
     // Toggle menu function
