@@ -1035,12 +1035,16 @@
       });
     }
 
+    function contactCandidateKey(line) {
+      return isPhoneContactValue(line)
+        ? String(line).replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '')
+        : String(line).toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
     function dedupeContactCandidates(candidates) {
       const seen = new Set();
       return candidates.filter(candidate => {
-        const key = isPhoneContactValue(candidate.line)
-          ? candidate.line.replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '')
-          : candidate.line.toLowerCase().replace(/\s+/g, ' ').trim();
+        const key = contactCandidateKey(candidate.line);
         if (!key || seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -1049,10 +1053,20 @@
 
     async function buildContactLinks(data) {
       const knowledgeBaseEntries = await loadKnowledgeBaseEntries();
-      return dedupeContactCandidates([
+      const deduped = dedupeContactCandidates([
         ...collectAppContactCandidates(data),
         ...collectKnowledgeBaseContactCandidates(knowledgeBaseEntries),
       ]);
+      // Hide contacts the user deleted in the editor, even though the same
+      // number/email may still be scrapable from free text. A key currently
+      // kept as a structured contact is never suppressed.
+      const suppressed = new Set((data.contactsSuppressed || []).map(String).filter(Boolean));
+      if (suppressed.size === 0) return deduped;
+      const kept = new Set(collectStructuredContactCandidates(data.contacts).map(c => contactCandidateKey(c.line)));
+      return deduped.filter(c => {
+        const k = contactCandidateKey(c.line);
+        return !(suppressed.has(k) && !kept.has(k));
+      });
     }
 
     // Toggle menu function
@@ -1065,7 +1079,7 @@
 
     // Module-level store — lets onclick handlers look up text by ID instead of
     // embedding it inline (which breaks on single quotes, newlines, etc.)
-    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [] };
+    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [], contactsSuppressed: [] };
 
     // Ensure data has all required sections (handles API responses with partial data)
     function normalizeData(data) {
@@ -1089,7 +1103,8 @@
         contacts: Array.isArray(data?.contacts) ? data.contacts : [],
         money: Array.isArray(data?.money) ? data.money.map(normalizeMoneyItem) : [],
         checklist: Array.isArray(data?.checklist) ? data.checklist : [],
-        generalinfo: Array.isArray(data?.generalinfo) ? data.generalinfo : []
+        generalinfo: Array.isArray(data?.generalinfo) ? data.generalinfo : [],
+        contactsSuppressed: Array.isArray(data?.contactsSuppressed) ? data.contactsSuppressed : []
       };
     }
 

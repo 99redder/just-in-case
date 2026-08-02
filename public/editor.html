@@ -375,7 +375,7 @@
 
   <script src="/contacts-extract.js"></script>
   <script>
-    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [], moneyNotes: [] };
+    let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [], moneyNotes: [], contactsSuppressed: [] };
     // Read-only accounts mirrored live from the rentals app's Net Worth. Shown
     // in the money section but not editable and never saved back.
     let syncedMoney = [];
@@ -777,7 +777,7 @@
       let changed = false;
       for (const section of Object.keys(data)) {
         if (!Array.isArray(data[section])) continue;
-        if (section === 'moneyNotes') continue; // keyed by account id, no numeric id
+        if (section === 'moneyNotes' || section === 'contactsSuppressed') continue; // not id'd item lists
         const seen = new Set();
         const maxId = Math.max(0, ...data[section].map(i => Number(i.id) || 0));
         let next = Math.max(Date.now(), maxId + 1);
@@ -825,8 +825,30 @@
       renderApp();
     }
 
+    // phone → digits (leading US 1 stripped); email → lowercased. Matches the
+    // Contact Link Card's de-dupe/suppression key format in index.html.
+    function contactSuppressKeys(contact) {
+      const keys = [];
+      const digits = String(contact?.phone || '').replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '');
+      if (digits) keys.push(digits);
+      const email = String(contact?.email || '').trim().toLowerCase();
+      if (email) keys.push(email);
+      return keys;
+    }
+
     function deleteItem(section, id) {
       if (!confirm('Delete this item?')) return;
+      // Deleting a contact must also stop the card from re-scraping the same
+      // number/email out of free-text fields, so remember its keys.
+      if (section === 'contacts') {
+        const gone = (appData.contacts || []).find(i => i.id === id);
+        if (gone) {
+          if (!Array.isArray(appData.contactsSuppressed)) appData.contactsSuppressed = [];
+          for (const k of contactSuppressKeys(gone)) {
+            if (!appData.contactsSuppressed.includes(k)) appData.contactsSuppressed.push(k);
+          }
+        }
+      }
       appData[section] = appData[section].filter(i => i.id !== id);
       saveData();
       renderApp();
@@ -1040,6 +1062,8 @@
         const emailKey = s => String(s || '').trim().toLowerCase();
         const haveP = new Set(appData.contacts.map(c => digits(c.phone)).filter(Boolean));
         const haveE = new Set(appData.contacts.map(c => emailKey(c.email)).filter(Boolean));
+        // Don't resurrect contacts the user explicitly deleted.
+        const suppressed = new Set((appData.contactsSuppressed || []).map(String));
 
         let added = 0;
         let nextId = Date.now();
@@ -1047,6 +1071,7 @@
           const pk = digits(c.phone);
           const ek = emailKey(c.email);
           if ((pk && haveP.has(pk)) || (ek && haveE.has(ek))) continue;
+          if ((pk && suppressed.has(pk)) || (ek && suppressed.has(ek))) continue;
           appData.contacts.push({ id: nextId++, name: c.name, relationship: c.relationship, phone: c.phone, email: c.email, notes: c.notes });
           if (pk) haveP.add(pk);
           if (ek) haveE.add(ek);
@@ -1128,6 +1153,7 @@
           checklist:  Array.isArray(loaded?.checklist)  ? loaded.checklist  : [],
           generalinfo: Array.isArray(loaded?.generalinfo) ? loaded.generalinfo : [],
           moneyNotes: Array.isArray(loaded?.moneyNotes) ? loaded.moneyNotes : [],
+          contactsSuppressed: Array.isArray(loaded?.contactsSuppressed) ? loaded.contactsSuppressed : [],
         };
         if (fixDuplicateIds(appData)) await saveData();
       } catch (e) { /* use empty defaults */ }

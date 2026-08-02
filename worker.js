@@ -497,7 +497,7 @@ async function handleSaveData(request, env) {
     }
 
     // Validate expected top-level keys
-    const allowedKeys = ['firststeps', 'insurance', 'contacts', 'money', 'checklist', 'generalinfo', 'moneyNotes'];
+    const allowedKeys = ['firststeps', 'insurance', 'contacts', 'money', 'checklist', 'generalinfo', 'moneyNotes', 'contactsSuppressed'];
     for (const key of Object.keys(body)) {
       if (!allowedKeys.includes(key)) {
         return jsonRes({ error: `Unexpected key: ${key}` }, 400);
@@ -523,6 +523,14 @@ async function handleSaveData(request, env) {
         .filter(n => n && typeof n === 'object' && typeof n.key === 'string' && n.key)
         .map(n => ({ key: String(n.key).slice(0, 200), note: String(n.note || '').trim().slice(0, 2000) }))
         .filter(n => n.note);
+    }
+
+    // Suppressed contact keys (phone digits / lowercased emails) for contacts
+    // the user deleted, so the card won't re-scrape them from free text.
+    if (Array.isArray(body.contactsSuppressed)) {
+      body.contactsSuppressed = [...new Set(
+        body.contactsSuppressed.map(k => String(k || '').trim().slice(0, 200)).filter(Boolean)
+      )].slice(0, 2000);
     }
 
     // #5: Enforce payload size limit (1MB)
@@ -829,6 +837,7 @@ function defaultAppData() {
     generalinfo: [],
     contacts: [],
     moneyNotes: [],
+    contactsSuppressed: [],
   };
 }
 
