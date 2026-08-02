@@ -1051,11 +1051,23 @@
       });
     }
 
-    // Single source of truth: the Contacts section managed in the editor. The
-    // card no longer scrapes free-text fields or K's knowledge base — the
-    // editor migrates those into Contacts so everything lives in one place.
+    // Single source of truth: the Contacts section managed in the editor. Each
+    // contact becomes ONE grouped card entry (header once, with its phone /
+    // email / note lines beneath) — not one card per field.
     async function buildContactLinks(data) {
-      return dedupeContactCandidates(collectStructuredContactCandidates(data.contacts));
+      const candidates = dedupeContactCandidates(collectStructuredContactCandidates(data.contacts));
+      const groups = [];
+      const bySource = new Map();
+      for (const c of candidates) {
+        let group = bySource.get(c.source);
+        if (!group) {
+          group = { source: c.source, lines: [] };
+          bySource.set(c.source, group);
+          groups.push(group);
+        }
+        group.lines.push({ kind: c.kind, line: c.line });
+      }
+      return groups;
     }
 
     // Toggle menu function
@@ -1147,11 +1159,11 @@
             <span class="chevron">▼</span>
           </div>
           <div class="menu-content" id="contact-links-content">
-            ${contactLinks.length > 0 ? contactLinks.map(item => `
+            ${contactLinks.length > 0 ? contactLinks.map(group => `
               <div class="menu-item">
                 <div class="menu-item-info">
-                  ${renderContactHeader(item.source)}
-                  <div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(item.kind)}</span><span class="contact-kind">(${contactKindLabel(item.kind)})</span>${contactLinkify(item.line)}</div>
+                  ${renderContactHeader(group.source)}
+                  ${group.lines.map(l => `<div class="contact-line"><span class="contact-icon" aria-hidden="true">${contactIcon(l.kind)}</span><span class="contact-kind">(${contactKindLabel(l.kind)})</span>${contactLinkify(l.line)}</div>`).join('')}
                 </div>
               </div>
             `).join('') : '<div class="empty-state">No contact information found yet.</div>'}
