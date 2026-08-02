@@ -479,7 +479,13 @@
             <button class="btn btn-outline" onclick="openModal('contacts',${item.id})">Edit</button>
             <button class="btn btn-danger"  onclick="deleteItem('contacts',${item.id})">Delete</button>
           </div>
-        </div>`, 'No contacts yet.');
+        </div>`, 'No contacts yet.')
+        + ((appData.contacts || []).length
+            ? `<div style="margin:-0.5rem 0 1.25rem;">
+                 <button class="btn btn-danger" onclick="clearAllContacts()">🗑️ Delete all contacts</button>
+                 <div class="data-item-meta" style="margin-top:0.35rem;">Wipes the whole contact list so you can start over. Contacts are manual-only now — only what you add here shows in the Contact Link Card.</div>
+               </div>`
+            : '');
 
       const moneyHtml = renderSection('Where We Have Money', '💰', 'money', item => `
         <div class="data-item">
@@ -829,6 +835,14 @@
       const email = String(contact?.email || '').trim().toLowerCase();
       if (email) keys.push(email);
       return keys;
+    }
+
+    async function clearAllContacts() {
+      if (!confirm('Delete ALL contacts? You can add them again afterwards. This cannot be undone.')) return;
+      appData.contacts = [];
+      await saveData();
+      await renderApp();
+      showToast('All contacts deleted', 'success');
     }
 
     function deleteItem(section, id) {
