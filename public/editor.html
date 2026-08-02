@@ -373,7 +373,6 @@
     <span id="toast-msg"></span>
   </div>
 
-  <script src="/contacts-extract.js"></script>
   <script>
     let appData = { firststeps: [], insurance: [], contacts: [], money: [], checklist: [], generalinfo: [], moneyNotes: [], contactsSuppressed: [] };
     // Read-only accounts mirrored live from the rentals app's Net Worth. Shown
@@ -480,11 +479,7 @@
             <button class="btn btn-outline" onclick="openModal('contacts',${item.id})">Edit</button>
             <button class="btn btn-danger"  onclick="deleteItem('contacts',${item.id})">Delete</button>
           </div>
-        </div>`, 'No contacts yet.')
-        + `<div style="margin:-0.5rem 0 1.25rem;">
-             <button class="btn btn-outline" onclick="importContactsFromData()">⤵️ Import from existing data &amp; K knowledge base</button>
-             <div class="data-item-meta" style="margin-top:0.35rem;">Pulls phone numbers &amp; emails found in First Steps, Insurance, Money, General Info, and K's knowledge base into editable contacts. Skips ones you already have.</div>
-           </div>`;
+        </div>`, 'No contacts yet.');
 
       const moneyHtml = renderSection('Where We Have Money', '💰', 'money', item => `
         <div class="data-item">
@@ -1043,58 +1038,6 @@
     // One-time importer: materialize the phone/email contacts the Contact Link
     // Card scrapes (from free-text fields + K's knowledge base) into first-class
     // editable Contacts. De-dupes against existing contacts by phone/email.
-    async function fetchKbEntries() {
-      try {
-        const r = await fetch('/api/knowledge-base', { headers: authHeaders() });
-        if (r.ok) { const j = await r.json(); return Array.isArray(j?.entries) ? j.entries : []; }
-      } catch (e) { /* KB optional */ }
-      return [];
-    }
-
-    // Merge contacts scraped from free-text fields + K's knowledge base into the
-    // Contacts section (the single source of truth). Idempotent: skips ones
-    // already present (by phone/email) and ones the user explicitly deleted
-    // (contactsSuppressed). Returns how many were added. Mutates appData only.
-    function mergeScrapedContacts(data, kb) {
-      if (!window.JICContacts) return 0;
-      const scraped = window.JICContacts.contactsFromCandidates(
-        window.JICContacts.scrapeContactCandidates(data, kb)
-      );
-      if (!Array.isArray(appData.contacts)) appData.contacts = [];
-      const digits = s => String(s || '').replace(/[^\d]/g, '').replace(/^1(?=\d{10}$)/, '');
-      const emailKey = s => String(s || '').trim().toLowerCase();
-      const haveP = new Set(appData.contacts.map(c => digits(c.phone)).filter(Boolean));
-      const haveE = new Set(appData.contacts.map(c => emailKey(c.email)).filter(Boolean));
-      const suppressed = new Set((appData.contactsSuppressed || []).map(String));
-
-      let added = 0;
-      let nextId = Date.now();
-      for (const c of scraped) {
-        const pk = digits(c.phone);
-        const ek = emailKey(c.email);
-        if ((pk && haveP.has(pk)) || (ek && haveE.has(ek))) continue;
-        if ((pk && suppressed.has(pk)) || (ek && suppressed.has(ek))) continue;
-        appData.contacts.push({ id: nextId++, name: c.name, relationship: c.relationship, phone: c.phone, email: c.email, notes: c.notes });
-        if (pk) haveP.add(pk);
-        if (ek) haveE.add(ek);
-        added++;
-      }
-      return added;
-    }
-
-    async function importContactsFromData() {
-      if (!window.JICContacts) { showToast('Import tool not loaded', 'error'); return; }
-      try {
-        const added = mergeScrapedContacts(await loadData(), await fetchKbEntries());
-        if (added === 0) { showToast('No new contacts to import', 'success'); return; }
-        await saveData();
-        await renderApp();
-        showToast(`Imported ${added} contact${added === 1 ? '' : 's'}`, 'success');
-      } catch (e) {
-        showToast('Import failed', 'error');
-      }
-    }
-
     // Save a Just-In-Case-only note for a synced Net Worth account. Stored in
     // appData.moneyNotes keyed by the synced entry id; never touches Net Worth.
     async function saveMoneyNote(id) {
@@ -1165,15 +1108,31 @@
         };
         if (fixDuplicateIds(appData)) await saveData();
 
-        // One-time (per device) migration: pull any contacts still living only
-        // in free text / K's knowledge base into the Contacts section, so it's
-        // the single source the card reads. Idempotent — safe if it re-runs.
-        if (!localStorage.getItem('jic_contacts_migrated')) {
+        // One-time cleanup (2026-08): the earlier auto-scraper created duplicate
+        // contacts. Per the user's request, keep only Jennifer Bertg and the two
+        // OSGLI records they added, drop everything else, and collapse any exact
+        // duplicates. Contacts are manual-only from here on. Runs once per device.
+        if (!localStorage.getItem('jic_contacts_reset_2026_08')) {
           try {
-            const added = mergeScrapedContacts(loaded, await fetchKbEntries());
-            if (added > 0) await saveData();
+            const keep = c => /jennifer/i.test(c?.name || '')
+              || /osgli/i.test(`${c?.name || ''} ${c?.relationship || ''}`);
+            const seen = new Set();
+            const cleaned = (appData.contacts || []).filter(keep).filter(c => {
+              const sig = [
+                String(c.name || '').trim().toLowerCase(),
+                String(c.phone || '').replace(/[^\d]/g, ''),
+                String(c.email || '').trim().toLowerCase(),
+              ].join('|');
+              if (seen.has(sig)) return false;
+              seen.add(sig);
+              return true;
+            });
+            if (cleaned.length !== (appData.contacts || []).length) {
+              appData.contacts = cleaned;
+              await saveData();
+            }
           } catch (e) { /* non-fatal */ }
-          localStorage.setItem('jic_contacts_migrated', '1');
+          localStorage.setItem('jic_contacts_reset_2026_08', '1');
         }
       } catch (e) { /* use empty defaults */ }
 
