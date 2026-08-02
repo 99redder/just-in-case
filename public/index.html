@@ -275,6 +275,33 @@
     }
 
     /* Where We Have Money section */
+    .money-sort {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.6rem 0.9rem 0.2rem;
+    }
+    .money-sort-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-right: 0.15rem;
+    }
+    .sort-btn {
+      background: var(--surface-2);
+      color: var(--text-muted);
+      border: 1px solid var(--surface-2);
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .sort-btn.active {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--primary);
+      border-color: rgba(59, 130, 246, 0.4);
+    }
+
     .account-card {
       background: var(--surface-2);
       border-radius: 10px;
@@ -512,6 +539,13 @@
       font-weight: 800;
       color: #fff;
       flex-shrink: 0;
+      overflow: hidden;
+    }
+    .askk-header-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
     .askk-header-text { flex: 1; min-width: 0; }
     .askk-header-title {
@@ -693,7 +727,7 @@
   <div class="askk-overlay" id="askk-overlay"></div>
   <div class="askk-drawer" id="askk-drawer" role="dialog" aria-modal="true" aria-labelledby="askk-title">
     <div class="askk-header">
-      <div class="askk-header-icon">K</div>
+      <div class="askk-header-icon"><img src="/askk-avatar.png" alt="K"></div>
       <div class="askk-header-text">
         <h2 class="askk-header-title" id="askk-title">Ask K</h2>
         <p class="askk-header-subtitle">Just In Case assistant</p>
@@ -1077,8 +1111,15 @@
     // Toggle menu function
     function toggleMenu(sectionId) {
       const content = document.getElementById(sectionId + '-content');
-      if (content) {
-        content.classList.toggle('expanded');
+      if (!content) return;
+      if (content.classList.contains('expanded')) {
+        content.style.maxHeight = '0px';
+        content.classList.remove('expanded');
+      } else {
+        content.classList.add('expanded');
+        // Size to the actual content so long lists (e.g. many accounts) never
+        // clip — the old fixed 2000px cap cut off the bottom of tall sections.
+        content.style.maxHeight = content.scrollHeight + 'px';
       }
     }
 
@@ -1111,6 +1152,58 @@
         generalinfo: Array.isArray(data?.generalinfo) ? data.generalinfo : [],
         contactsSuppressed: Array.isArray(data?.contactsSuppressed) ? data.contactsSuppressed : []
       };
+    }
+
+    // ── Where We Have Money: sorting ──────────────────────────
+    let moneySort = 'amount'; // default: highest amount first
+
+    function parseMoneyAmount(str) {
+      const n = parseFloat(String(str || '').replace(/[^0-9.]/g, ''));
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function sortedMoney() {
+      const arr = Array.isArray(appData.money) ? [...appData.money] : [];
+      if (moneySort === 'name') {
+        arr.sort((a, b) => String(a.account || '').localeCompare(String(b.account || ''), undefined, { sensitivity: 'base' }));
+      } else {
+        arr.sort((a, b) => parseMoneyAmount(b.balance) - parseMoneyAmount(a.balance));
+      }
+      return arr;
+    }
+
+    function moneyListHtml() {
+      const items = sortedMoney();
+      if (items.length === 0) return '<div class="empty-state">No accounts added yet.</div>';
+      return items.map(item => `
+        <div class="menu-item">
+          <div class="menu-item-info">
+            <div class="menu-item-title">${escapeHtml(item.account)}${item.synced ? ' <span class="sync-badge" title="Live balance from Net Worth">↻ Net Worth</span>' : ''}</div>
+            <div class="menu-item-subtitle">
+              <strong>Type:</strong> ${escapeHtml(item.type)}<br>
+              <strong>Balance:</strong> ${escapeHtml(item.balance)}
+              ${item.username ? '<br><strong>Username:</strong> ' + escapeHtml(item.username) : ''}
+              ${item.instructions ? '<br><strong>Instructions:</strong> ' + escapeHtml(item.instructions) : ''}
+              ${item.note ? '<br><strong>Note:</strong> ' + escapeHtml(item.note) : ''}
+              ${item.loginUrl && item.loginUrl !== '#' ? '<br><a href="' + escapeHtml(item.loginUrl) + '" target="_blank" rel="noopener">Open site</a>' : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function setMoneySort(mode) {
+      moneySort = (mode === 'name') ? 'name' : 'amount';
+      const list = document.getElementById('money-list');
+      if (list) list.innerHTML = moneyListHtml();
+      document.querySelectorAll('.money-sort .sort-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.sort === moneySort);
+      });
+      // Re-fit the expanded section so the re-sorted list never clips.
+      const content = document.getElementById('money-content');
+      if (content && content.classList.contains('expanded')) {
+        content.style.maxHeight = content.scrollHeight + 'px';
+      }
     }
 
     // Render functions
@@ -1206,21 +1299,13 @@
             <span class="chevron">▼</span>
           </div>
           <div class="menu-content" id="money-content">
-            ${appData.money.length > 0 ? appData.money.map(item => `
-              <div class="menu-item">
-                <div class="menu-item-info">
-                  <div class="menu-item-title">${escapeHtml(item.account)}${item.synced ? ' <span class="sync-badge" title="Live balance from Net Worth">↻ Net Worth</span>' : ''}</div>
-                  <div class="menu-item-subtitle">
-                    <strong>Type:</strong> ${escapeHtml(item.type)}<br>
-                    <strong>Balance:</strong> ${escapeHtml(item.balance)}
-                    ${item.username ? '<br><strong>Username:</strong> ' + escapeHtml(item.username) : ''}
-                    ${item.instructions ? '<br><strong>Instructions:</strong> ' + escapeHtml(item.instructions) : ''}
-                    ${item.note ? '<br><strong>Note:</strong> ' + escapeHtml(item.note) : ''}
-                    ${item.loginUrl && item.loginUrl !== '#' ? '<br><a href="' + escapeHtml(item.loginUrl) + '" target="_blank" rel="noopener">Open site</a>' : ''}
-                  </div>
-                </div>
-              </div>
-            `).join('') : '<div class="empty-state">No accounts added yet.</div>'}
+            ${appData.money.length > 0 ? `
+              <div class="money-sort">
+                <span class="money-sort-label">Sort by</span>
+                <button class="sort-btn${moneySort === 'amount' ? ' active' : ''}" data-sort="amount" onclick="setMoneySort('amount')">Amount</button>
+                <button class="sort-btn${moneySort === 'name' ? ' active' : ''}" data-sort="name" onclick="setMoneySort('name')">Name</button>
+              </div>` : ''}
+            <div id="money-list">${moneyListHtml()}</div>
           </div>
         </div>
       `;
