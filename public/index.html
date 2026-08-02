@@ -494,6 +494,15 @@
       align-items: center;
       justify-content: center;
       transition: transform 0.15s, box-shadow 0.15s;
+      overflow: hidden;
+      padding: 0;
+    }
+    .askk-fab img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+      display: block;
     }
     .askk-fab:active { transform: scale(0.96); }
     .askk-overlay {
@@ -721,7 +730,7 @@
   </div>
 
   <!-- Ask K Floating Button -->
-  <button class="askk-fab" id="askk-fab" aria-label="Ask K">Ask K</button>
+  <button class="askk-fab" id="askk-fab" aria-label="Ask K"><img src="/askk-avatar.png" alt=""></button>
 
   <!-- Ask K Drawer -->
   <div class="askk-overlay" id="askk-overlay"></div>
