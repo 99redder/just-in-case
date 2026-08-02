@@ -375,6 +375,9 @@
 
   <script>
     let appData = { firststeps: [], insurance: [], money: [], checklist: [], generalinfo: [] };
+    // Read-only accounts mirrored live from the rentals app's Net Worth. Shown
+    // in the money section but not editable and never saved back.
+    let syncedMoney = [];
 
     // #3: Escape HTML to prevent XSS in modal forms
     function esc(s) {
@@ -477,7 +480,7 @@
             <button class="btn btn-outline" onclick="openModal('money',${item.id})">Edit</button>
             <button class="btn btn-danger"  onclick="deleteItem('money',${item.id})">Delete</button>
           </div>
-        </div>`, 'No accounts yet.');
+        </div>`, 'No accounts yet.') + syncedMoneyHtml();
 
       const checklistHtml = renderSection('Checklist', '📋', 'checklist', item => `
         <div class="data-item">
@@ -941,7 +944,29 @@
     }
 
     function acctIcon(t) {
-      return { Bank: '🏦', Investment: '📈', Retirement: '🏛️', Crypto: '🪙' }[t] || '💼';
+      return { Bank: '🏦', Investment: '📈', Retirement: '🏛️', Crypto: '🪙', Vehicle: '🚗', Property: '🏠' }[t] || '💼';
+    }
+
+    // Read-only block for accounts mirrored live from the Net Worth app. These
+    // are not editable here — balances update automatically from that source.
+    function syncedMoneyHtml() {
+      if (!Array.isArray(syncedMoney) || syncedMoney.length === 0) return '';
+      const items = syncedMoney.map(item => `
+        <div class="data-item">
+          <div class="data-item-title">${acctIcon(item.type)} ${h(item.account)}
+            <span style="font-size:0.65rem;font-weight:600;color:var(--primary);background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.35);border-radius:999px;padding:0.05rem 0.4rem;margin-left:0.4rem;white-space:nowrap;">↻ Net Worth</span>
+          </div>
+          <div class="data-item-meta">${h(item.type)} • ${h(item.balance)}</div>
+          ${item.username ? `<div class="data-item-meta">Username: ${h(item.username)}</div>` : ''}
+          ${item.instructions ? `<div class="data-item-meta">Instructions: ${h(item.instructions)}</div>` : ''}
+        </div>`).join('');
+      return `
+        <div style="margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--surface-2);">
+          <div class="data-item-meta" style="margin-bottom:0.5rem;">
+            🔗 Live from Net Worth (read-only) — edit these in the rentals app.
+          </div>
+          ${items}
+        </div>`;
     }
 
 
@@ -980,10 +1005,14 @@
 
       try {
         const loaded = await loadData();
+        const allMoney = Array.isArray(loaded?.money) ? loaded.money : [];
+        // Live Net Worth entries are read-only mirrors — keep them out of the
+        // editable set (and out of anything we POST back), display separately.
+        syncedMoney = allMoney.filter(m => m?.synced);
         appData = {
           firststeps: Array.isArray(loaded?.firststeps) ? loaded.firststeps : [],
           insurance:  Array.isArray(loaded?.insurance)  ? loaded.insurance  : [],
-          money:      Array.isArray(loaded?.money)      ? loaded.money      : [],
+          money:      allMoney.filter(m => !m?.synced),
           checklist:  Array.isArray(loaded?.checklist)  ? loaded.checklist  : [],
           generalinfo: Array.isArray(loaded?.generalinfo) ? loaded.generalinfo : [],
         };

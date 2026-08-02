@@ -23,6 +23,13 @@ binding       = "DB"
 database_name = "just-in-case-db"
 database_id   = "f75d17ed-9561-4a98-ba7c-5f786f178895"
 
+# Read-only link to the rentals ("stuff") app so K can answer "where's our
+# money?" with live Net Worth balances. Needs the NETWORTH_READ_TOKEN secret
+# (same value as the main worker's, matching rentals' JIC_READ_TOKEN).
+[[services]]
+binding = "RENTALS_API"
+service = "rentals-api"
+
 # Required secret (set with `wrangler secret put ASKK_API_KEY`):
 #   ASKK_API_KEY — MiniMax (or other OpenAI-compatible) API key.
 # Shared DATA_ENCRYPTION_KEY with main worker (AES-256-GCM).

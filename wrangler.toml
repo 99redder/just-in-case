@@ -25,6 +25,17 @@ binding       = "DB"
 database_name = "just-in-case-db"
 database_id   = "f75d17ed-9561-4a98-ba7c-5f786f178895"
 
+# Read-only, worker-to-worker link to the rentals ("stuff") app so
+# "Where We Have Money" can display live Net Worth account balances.
+# Authorized by the NETWORTH_READ_TOKEN secret, which must match the
+# rentals worker's JIC_READ_TOKEN secret:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+#   echo "<token>" | wrangler secret put NETWORTH_READ_TOKEN            # this worker
+#   cd ../rentals/cloudflare && echo "<token>" | wrangler secret put JIC_READ_TOKEN
+[[services]]
+binding = "RENTALS_API"
+service = "rentals-api"
+
 # Daily log retention sweep at 09:00 UTC (~04:00 ET). Drops old rows from
 # askk_log, save_log, and login_attempts so the tables don't grow forever.
 [triggers]

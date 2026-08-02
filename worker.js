@@ -396,21 +396,85 @@ async function handleResetPassword(request, env) {
 
 async function handleGetData(request, env) {
   try {
-    const data = await env.DB.prepare('SELECT * FROM app_data LIMIT 1').first();
-    if (data) {
-      // #2: Decrypt before sending to client
-      const decrypted = await decryptData(data.content, env);
-      return new Response(JSON.stringify(decrypted), {
-        headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
-      });
-    }
-    return new Response(JSON.stringify(defaultAppData()), {
+    const row = await env.DB.prepare('SELECT * FROM app_data LIMIT 1').first();
+    // #2: Decrypt before sending to client
+    const stored = row ? await decryptData(row.content, env) : defaultAppData();
+    // Merge in live Net Worth balances from the rentals app (read-only, never
+    // persisted here). Best-effort: if the source is unreachable, the app still
+    // serves the manually maintained entries.
+    const merged = await withNetWorthAccounts(stored, env);
+    return new Response(JSON.stringify(merged), {
       headers: { 'Content-Type': 'application/json', ...combinedHeaders() },
     });
   } catch (e) {
     console.error('get data error:', e);
     return jsonRes({ error: 'Failed to fetch data' }, 500);
   }
+}
+
+// ── Net Worth sync (live, read-only) ────────────────────────────
+//
+// Pulls asset accounts from the rentals ("stuff") worker's Net Worth record and
+// folds them into `money[]`. Rules the user asked for:
+//   • An account present in Net Worth OVERWRITES a matching manual money entry
+//     (matched case-insensitively by account name). The manual entry's login
+//     URL / username / instructions are preserved — Net Worth doesn't carry
+//     those — while the balance and type come live from Net Worth.
+//   • Manual entries with no Net Worth match are left untouched.
+// Synced entries are flagged `synced: true` and are NEVER written back to D1
+// (handleSaveData strips them), so this stays a live read-only mirror.
+async function withNetWorthAccounts(appData, env) {
+  const data = (appData && typeof appData === 'object') ? appData : {};
+  let accounts;
+  try {
+    accounts = await fetchNetWorthAccounts(env);
+  } catch (e) {
+    console.error('net worth sync error:', e);
+    return data; // fail open — serve manual data as-is
+  }
+  if (!Array.isArray(accounts) || accounts.length === 0) return data;
+
+  const manual = Array.isArray(data.money) ? data.money.filter(m => !m?.synced) : [];
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const manualByName = new Map(manual.map(m => [norm(m.account), m]));
+  const consumed = new Set();
+
+  const synced = accounts.map(a => {
+    const match = manualByName.get(norm(a.name));
+    if (match) consumed.add(norm(a.name));
+    return {
+      id: `nw:${a.key}`,
+      account: a.name,
+      type: a.type || 'Bank',
+      balance: formatMoneyAmount(a.balance),
+      loginUrl: match?.loginUrl || '',
+      username: match?.username || '',
+      instructions: match?.instructions || '',
+      synced: true,
+      source: 'Net Worth',
+    };
+  });
+
+  const remainingManual = manual.filter(m => !consumed.has(norm(m.account)));
+  return { ...data, money: [...remainingManual, ...synced] };
+}
+
+async function fetchNetWorthAccounts(env) {
+  if (!env.RENTALS_API || !env.NETWORTH_READ_TOKEN) return [];
+  const req = new Request('https://rentals-api.99redder.workers.dev/api/networth/accounts', {
+    method: 'GET',
+    headers: { 'X-Read-Token': env.NETWORTH_READ_TOKEN, 'Accept': 'application/json' },
+  });
+  const res = await env.RENTALS_API.fetch(req);
+  if (!res.ok) throw new Error(`net worth export ${res.status}`);
+  const payload = await res.json();
+  return Array.isArray(payload?.accounts) ? payload.accounts : [];
+}
+
+function formatMoneyAmount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '$0.00';
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 async function handleSaveData(request, env) {
@@ -430,6 +494,15 @@ async function handleSaveData(request, env) {
       if (!Array.isArray(body[key])) {
         return jsonRes({ error: `Key '${key}' must be an array` }, 400);
       }
+    }
+
+    // Never persist live Net Worth entries — they are merged in at read time
+    // (see withNetWorthAccounts) and must not be written back into D1, even if
+    // a client echoes them back on save.
+    if (Array.isArray(body.money)) {
+      body.money = body.money
+        .filter(m => m && typeof m === 'object' && !m.synced && !(typeof m.id === 'string' && m.id.startsWith('nw:')))
+        .map(({ synced, source, ...keep }) => keep);
     }
 
     // #5: Enforce payload size limit (1MB)

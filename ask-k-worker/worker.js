@@ -218,6 +218,9 @@ async function handleAskK(request, env, cors) {
   if (!liveData || typeof liveData !== 'object' || Array.isArray(liveData)) {
     liveData = { firststeps: [], insurance: [], money: [], checklist: [] };
   }
+  // Fold in live Net Worth accounts (read-only) so K can answer "where's our
+  // money?" with current balances. Best-effort — never blocks the answer.
+  liveData = await withNetWorthAccounts(liveData, env);
 
   try {
     const logQuestion = playbookId ? `[playbook: ${playbookId}]` : question;
@@ -439,6 +442,56 @@ async function logAskK(env, email, question, reply, error, status) {
   } catch (e) {
     console.error('askk_log insert failed:', e);
   }
+}
+
+// Merge live Net Worth asset accounts (from the rentals app) into the money
+// list, mirroring the main worker's read-time sync. Read-only; never persisted.
+// A Net Worth account overwrites a same-named manual entry (preserving its
+// login/username/instructions); unmatched manual entries stay.
+async function withNetWorthAccounts(appData, env) {
+  const data = (appData && typeof appData === 'object' && !Array.isArray(appData)) ? appData : {};
+  let accounts;
+  try {
+    if (!env.RENTALS_API || !env.NETWORTH_READ_TOKEN) return data;
+    const req = new Request('https://rentals-api.99redder.workers.dev/api/networth/accounts', {
+      method: 'GET',
+      headers: { 'X-Read-Token': env.NETWORTH_READ_TOKEN, 'Accept': 'application/json' },
+    });
+    const res = await env.RENTALS_API.fetch(req);
+    if (!res.ok) throw new Error(`net worth export ${res.status}`);
+    const payload = await res.json();
+    accounts = Array.isArray(payload?.accounts) ? payload.accounts : [];
+  } catch (e) {
+    console.error('net worth sync error:', e);
+    return data; // fail open
+  }
+  if (accounts.length === 0) return data;
+
+  const manual = Array.isArray(data.money) ? data.money.filter(m => !m?.synced) : [];
+  const norm = (s) => String(s || '').trim().toLowerCase();
+  const manualByName = new Map(manual.map(m => [norm(m.account), m]));
+  const consumed = new Set();
+  const fmt = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : '$0.00';
+  };
+  const synced = accounts.map(a => {
+    const match = manualByName.get(norm(a.name));
+    if (match) consumed.add(norm(a.name));
+    return {
+      id: `nw:${a.key}`,
+      account: a.name,
+      type: a.type || 'Bank',
+      balance: fmt(a.balance),
+      loginUrl: match?.loginUrl || '',
+      username: match?.username || '',
+      instructions: match?.instructions || '',
+      synced: true,
+      source: 'Net Worth',
+    };
+  });
+  const remainingManual = manual.filter(m => !consumed.has(norm(m.account)));
+  return { ...data, money: [...remainingManual, ...synced] };
 }
 
 async function decryptData(encryptedStr, env) {

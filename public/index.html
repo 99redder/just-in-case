@@ -301,6 +301,20 @@
       color: var(--danger);
     }
 
+    .sync-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--primary);
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      border-radius: 999px;
+      padding: 0.05rem 0.4rem;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
     .action-btn {
       background: var(--primary);
       color: white;
@@ -1045,7 +1059,9 @@
         balance: item?.balance || '$0.00',
         loginUrl: item?.loginUrl || '#',
         username: item?.username || '',
-        instructions: item?.instructions || ''
+        instructions: item?.instructions || '',
+        synced: item?.synced === true,
+        source: item?.source || ''
       });
 
       return {
@@ -1153,12 +1169,13 @@
             ${appData.money.length > 0 ? appData.money.map(item => `
               <div class="menu-item">
                 <div class="menu-item-info">
-                  <div class="menu-item-title">${escapeHtml(item.account)}</div>
+                  <div class="menu-item-title">${escapeHtml(item.account)}${item.synced ? ' <span class="sync-badge" title="Live balance from Net Worth">↻ Net Worth</span>' : ''}</div>
                   <div class="menu-item-subtitle">
                     <strong>Type:</strong> ${escapeHtml(item.type)}<br>
-                    <strong>Balance:</strong> ${escapeHtml(item.balance)}<br>
-                    <strong>Username:</strong> ${escapeHtml(item.username)}
+                    <strong>Balance:</strong> ${escapeHtml(item.balance)}
+                    ${item.username ? '<br><strong>Username:</strong> ' + escapeHtml(item.username) : ''}
                     ${item.instructions ? '<br><strong>Instructions:</strong> ' + escapeHtml(item.instructions) : ''}
+                    ${item.loginUrl && item.loginUrl !== '#' ? '<br><a href="' + escapeHtml(item.loginUrl) + '" target="_blank" rel="noopener">Open site</a>' : ''}
                   </div>
                 </div>
               </div>
